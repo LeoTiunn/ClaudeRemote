@@ -30,6 +30,10 @@ class ChatViewModel @Inject constructor(
             ">>> ",
             "\n> ",
         )
+        // Cursor-forward: \e[nC — replace with n spaces (preserves visual gaps)
+        private val CURSOR_FORWARD_REGEX = Regex("\u001B\\[(\\d*)C")
+
+        // All other ANSI/terminal sequences — strip entirely
         private val ANSI_ESCAPE_REGEX = Regex(
             buildString {
                 append("\u001B\\[\\??[0-9;]*[a-zA-Z]")       // CSI sequences incl. DEC private mode
@@ -59,8 +63,13 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun handleOutputChunk(rawChunk: String) {
-        // Strip ANSI escape codes from terminal output
-        val chunk = ANSI_ESCAPE_REGEX.replace(rawChunk, "")
+        // 1. Replace cursor-forward sequences with spaces (preserves visual gaps)
+        val withSpaces = CURSOR_FORWARD_REGEX.replace(rawChunk) { match ->
+            val n = match.groupValues[1].toIntOrNull() ?: 1
+            " ".repeat(n.coerceIn(1, 40))
+        }
+        // 2. Strip all other ANSI escape codes
+        val chunk = ANSI_ESCAPE_REGEX.replace(withSpaces, "")
         if (chunk.isEmpty()) return
 
         // Check if this chunk contains a prompt marker, indicating Claude is done
