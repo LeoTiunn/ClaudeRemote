@@ -174,34 +174,37 @@ class SshClientImpl @Inject constructor() : SshClient {
             pending.outputBuffer.append(text)
             val content = pending.outputBuffer.toString()
 
-            // Count start markers seen so far
-            // 1st occurrence = echo, 2nd occurrence = real output
-            var searchFrom = 0
-            var count = 0
-            while (true) {
-                val idx = content.indexOf(startMarker, searchFrom)
-                if (idx < 0) break
-                count++
-                searchFrom = idx + startMarker.length
-            }
-
-            if (count >= 2 && !pending.capturing) {
-                // Found the real start marker (2nd occurrence)
-                // Find the 2nd occurrence position
-                val firstIdx = content.indexOf(startMarker)
-                val secondIdx = content.indexOf(startMarker, firstIdx + startMarker.length)
-                pending.capturing = true
-                val afterStart = content.substring(secondIdx + startMarker.length)
-                pending.outputBuffer.clear()
-                pending.outputBuffer.append(afterStart)
-                DebugLog.log("EXEC", "Found real START marker (2nd occurrence)")
+            if (!pending.capturing) {
+                // Look for the start marker on its own line (after a newline).
+                // The echo has it embedded: echo 'START_CMD_xxx'; command...
+                // The real output has it on its own line: \nSTART_CMD_xxx\n
+                val pattern = "\n$startMarker\n"
+                val idx = content.indexOf(pattern)
+                if (idx >= 0) {
+                    pending.capturing = true
+                    val afterStart = content.substring(idx + pattern.length)
+                    pending.outputBuffer.clear()
+                    pending.outputBuffer.append(afterStart)
+                    DebugLog.log("EXEC", "Found real START marker (on own line)")
+                }
             }
 
             if (pending.capturing) {
                 val currentContent = pending.outputBuffer.toString()
-                val endIdx = currentContent.indexOf(endMarker)
+                // End marker is also on its own line
+                val endPattern = "\n$endMarker\n"
+                val endIdx = currentContent.indexOf(endPattern)
                 if (endIdx >= 0) {
                     val result = currentContent.substring(0, endIdx).trim()
+                    DebugLog.log("EXEC", "Captured result(${result.length}): ${result.take(200)}")
+                    pending.deferred.complete(result)
+                    return
+                }
+                // Also check if end marker is at the very end with just a newline before it
+                val endPattern2 = "\n$endMarker"
+                val endIdx2 = currentContent.indexOf(endPattern2)
+                if (endIdx2 >= 0 && currentContent.endsWith(endMarker)) {
+                    val result = currentContent.substring(0, endIdx2).trim()
                     DebugLog.log("EXEC", "Captured result(${result.length}): ${result.take(200)}")
                     pending.deferred.complete(result)
                     return
