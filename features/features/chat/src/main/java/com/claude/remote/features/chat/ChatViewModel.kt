@@ -6,8 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -22,6 +25,10 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    // Raw terminal output for xterm.js WebView
+    private val _terminalOutput = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val terminalOutput: Flow<String> = _terminalOutput.asSharedFlow()
 
     companion object {
         private val PROMPT_MARKERS = listOf(
@@ -59,7 +66,13 @@ class ChatViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
-                handleOutputChunk(chunk)
+                if (sshClient.isAttachedToTmux) {
+                    // Terminal mode: send raw output to xterm.js
+                    _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
+                    _terminalOutput.emit(chunk)
+                } else {
+                    handleOutputChunk(chunk)
+                }
             }
         }
 

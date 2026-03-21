@@ -8,6 +8,7 @@ data class ChatUiState(
     val inputText: String = "",
     val isStreaming: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val isTerminalMode: Boolean = false,
     val error: String? = null,
     val isVoiceListening: Boolean = false,
     val voicePartialResult: String = ""

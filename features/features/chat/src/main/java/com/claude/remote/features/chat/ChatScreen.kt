@@ -151,23 +151,31 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Message list
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                state = listState,
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(uiState.messages, key = { it.id }) { message ->
-                    ChatMessageItem(
-                        message = message,
-                        onCopy = { viewModel.copyMessageContent(message.id) }
-                    )
-                }
+            if (uiState.isTerminalMode) {
+                // xterm.js WebView for tmux sessions
+                TerminalView(
+                    outputFlow = viewModel.terminalOutput,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                // Regular chat message list
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    state = listState,
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(uiState.messages, key = { it.id }) { message ->
+                        ChatMessageItem(
+                            message = message,
+                            onCopy = { viewModel.copyMessageContent(message.id) }
+                        )
+                    }
 
-                if (uiState.isStreaming && (messages.isEmpty() || messages.last().isUser)) {
-                    item(key = "streaming_indicator") {
-                        StreamingIndicator()
+                    if (uiState.isStreaming && (messages.isEmpty() || messages.last().isUser)) {
+                        item(key = "streaming_indicator") {
+                            StreamingIndicator()
+                        }
                     }
                 }
             }
