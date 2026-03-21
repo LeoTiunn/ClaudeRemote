@@ -34,6 +34,11 @@ var lastRows = 0;
 var lastWidthPx = 0;
 var lastHeightPx = 0;
 
+// Scroll-aware write buffering: pause writes while user is scrolling
+var isUserScrolling = false;
+var writeBuffer = [];
+var flushTimer = null;
+
 window.onerror = function(msg, url, line) {
   document.title = 'ERR: ' + msg;
 };
@@ -121,6 +126,8 @@ try {
     el.addEventListener('touchstart', function(e) {
       if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
       velocity = 0;
+      isUserScrolling = true;
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       if (e.touches.length === 1) {
         lastY = e.touches[0].clientY;
         lastTime = Date.now();
@@ -140,6 +147,15 @@ try {
       viewport.scrollTop += dy;
     }, { passive: false });
 
+    function flushWriteBuffer() {
+      isUserScrolling = false;
+      if (writeBuffer.length > 0) {
+        var combined = writeBuffer.join('');
+        writeBuffer = [];
+        term.write(combined);
+      }
+    }
+
     el.addEventListener('touchend', function() {
       lastY = null;
       if (Math.abs(velocity) > 0.15) {
@@ -147,11 +163,18 @@ try {
         var friction = 0.96;
         function momentum() {
           v *= friction;
-          if (Math.abs(v) < 0.3) return;
+          if (Math.abs(v) < 0.3) {
+            // Momentum done — flush buffered writes after short delay
+            flushTimer = setTimeout(flushWriteBuffer, 100);
+            return;
+          }
           viewport.scrollTop += v;
           momentumId = requestAnimationFrame(momentum);
         }
         momentumId = requestAnimationFrame(momentum);
+      } else {
+        // No momentum — flush immediately
+        flushTimer = setTimeout(flushWriteBuffer, 100);
       }
     }, { passive: true });
   })();
@@ -178,7 +201,11 @@ window.writeBase64 = function(b64) {
   try {
     var raw = b64ToUtf8(b64);
     writeCount++;
-    term.write(raw);
+    if (isUserScrolling) {
+      writeBuffer.push(raw);
+    } else {
+      term.write(raw);
+    }
   } catch(e) {}
 };
 
