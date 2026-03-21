@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -106,9 +107,7 @@ class ChatViewModel @Inject constructor(
                 if (state == com.claude.remote.core.ui.components.ConnectionState.CONNECTED && wasDisconnected) {
                     val session = sshClient.currentSessionName
                     if (session.isNotEmpty() && !sshClient.isAttachedToTmux) {
-                        tmuxSessionManager.attachToSession(session, sshClient)
-                        kotlinx.coroutines.delay(500)
-                        sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L redraw
+                        restoreAndAttach(session)
                     }
                 }
             }
@@ -123,17 +122,32 @@ class ChatViewModel @Inject constructor(
             try {
                 if (sshClient.connectionState.value != com.claude.remote.core.ui.components.ConnectionState.CONNECTED) {
                     sshClient.reconnect()
-                    // connectionState collector above will auto-attach after connect
+                    // connectionState collector above will auto-attach via restoreAndAttach
                 } else if (!sshClient.isAttachedToTmux) {
-                    tmuxSessionManager.attachToSession(sessionName, sshClient)
+                    restoreAndAttach(sessionName)
                     _uiState.update { it.copy(isReconnecting = false) }
-                    kotlinx.coroutines.delay(500)
-                    sshClient.sendRawBytes(byteArrayOf(0x0C))
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isReconnecting = false, error = "Reconnect failed: ${e.message}") }
             }
         }
+    }
+
+    private suspend fun restoreAndAttach(sessionName: String) {
+        try {
+            // Capture scrollback history before attaching
+            val history = tmuxSessionManager.capturePane(sessionName, sshClient)
+            if (history.isNotBlank()) {
+                // Write captured history to xterm.js so user sees previous content
+                _terminalOutput.emit("\u001b[2J\u001b[H") // Clear screen first
+                _terminalOutput.emit(history)
+            }
+        } catch (e: Exception) {
+            DebugLog.log("CHAT", "capturePane failed: ${e.message}")
+        }
+        tmuxSessionManager.attachToSession(sessionName, sshClient)
+        kotlinx.coroutines.delay(500)
+        sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L redraw
     }
 
     private fun cleanTerminalOutput(raw: String): String {

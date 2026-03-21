@@ -105,26 +105,21 @@ try {
     }
   };
 
-  // Touch scroll using term.scrollLines() on the terminal element.
-  // Canvas sits on top of viewport, so we must listen on #terminal.
+  // Touch scroll — directly manipulate xterm.js viewport scrollTop for smooth native feel
   (function() {
+    var viewport = document.querySelector('.xterm-viewport');
+    if (!viewport) return;
+
     var lastY = null;
     var velocity = 0;
     var lastTime = 0;
-    var accum = 0;
     var momentumId = null;
-    var cellH = 16;
-    try {
-      var ch = term._core._renderService.dimensions.css.cell.height;
-      if (ch > 0) cellH = ch;
-    } catch(e) {}
 
     var el = document.getElementById('terminal');
 
     el.addEventListener('touchstart', function(e) {
       if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
       velocity = 0;
-      accum = 0;
       if (e.touches.length === 1) {
         lastY = e.touches[0].clientY;
         lastTime = Date.now();
@@ -138,38 +133,21 @@ try {
       var dy = lastY - y;
       var now = Date.now();
       var dt = now - lastTime;
-      if (dt > 0) velocity = velocity * 0.3 + (dy / dt) * 0.7;
-      accum += dy;
+      if (dt > 0) velocity = velocity * 0.6 + (dy / dt) * 0.4;
       lastY = y;
       lastTime = now;
-
-      // Scroll in 3-line chunks to reduce re-renders
-      var lines = Math.trunc(accum / cellH);
-      if (Math.abs(lines) >= 2) {
-        term.scrollLines(lines);
-        accum -= lines * cellH;
-      }
+      viewport.scrollTop += dy;
     }, { passive: false });
 
     el.addEventListener('touchend', function() {
       lastY = null;
-      // Flush remaining
-      var lines = Math.trunc(accum / cellH);
-      if (lines !== 0) { term.scrollLines(lines); accum = 0; }
-
-      // Momentum — scroll in bigger jumps, fewer re-renders
-      if (Math.abs(velocity) > 0.2) {
+      if (Math.abs(velocity) > 0.3) {
         var v = velocity * 16;
-        var friction = 0.94;
+        var friction = 0.95;
         function momentum() {
           v *= friction;
-          if (Math.abs(v) < 1) return;
-          accum += v;
-          var lines = Math.trunc(accum / cellH);
-          if (Math.abs(lines) >= 2) {
-            term.scrollLines(lines);
-            accum -= lines * cellH;
-          }
+          if (Math.abs(v) < 0.5) return;
+          viewport.scrollTop += v;
           momentumId = requestAnimationFrame(momentum);
         }
         momentumId = requestAnimationFrame(momentum);

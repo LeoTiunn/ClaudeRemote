@@ -59,6 +59,10 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
         client.sendInput("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux attach -t '$sessionName'")
     }
 
+    override suspend fun capturePane(sessionName: String, client: SshClient): String {
+        return client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux capture-pane -t '$sessionName' -p -S -500 2>/dev/null || true")
+    }
+
     override suspend fun sendCommand(sessionName: String, command: String, client: SshClient) {
         client.sendInput(command)
     }

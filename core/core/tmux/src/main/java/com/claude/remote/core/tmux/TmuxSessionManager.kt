@@ -9,6 +9,7 @@ interface TmuxSessionManager {
     suspend fun createSession(sessionName: String, workingDirectory: String, client: SshClient): TmuxSession
     suspend fun attachToSession(sessionName: String, client: SshClient)
     suspend fun sendCommand(sessionName: String, command: String, client: SshClient)
+    suspend fun capturePane(sessionName: String, client: SshClient): String
     suspend fun killSession(sessionName: String, client: SshClient)
     fun streamSessionOutput(client: SshClient): Flow<String>
 }
