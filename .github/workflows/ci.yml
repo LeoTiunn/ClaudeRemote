@@ -52,13 +52,20 @@ jobs:
           name: debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Upload APK to latest release
+      - name: Create release and upload APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
-          if [ -n "$LATEST_TAG" ]; then
-            APK_PATH=$(ls app/build/outputs/apk/debug/*.apk | head -1)
-            gh release upload "$LATEST_TAG" "$APK_PATH" --clobber
+          # Read version from build.gradle.kts
+          VERSION=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}"
+          APK_PATH=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+
+          # Create release if it doesn't exist, then upload APK
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_PATH" --clobber
+          else
+            gh release create "$TAG" "$APK_PATH" --title "$TAG — $COMMIT_MSG" --latest --notes "Automated release from CI"
           fi
