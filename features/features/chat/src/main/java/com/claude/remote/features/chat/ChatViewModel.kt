@@ -31,7 +31,14 @@ class ChatViewModel @Inject constructor(
             "\n> ",
         )
         private val ANSI_ESCAPE_REGEX = Regex(
-            "\u001B\\[[0-9;]*[a-zA-Z]|\u001B\\]\\d+;[^\u0007]*\u0007|\u001B\\([A-Z]"
+            buildString {
+                append("\u001B\\[\\??[0-9;]*[a-zA-Z]")       // CSI sequences incl. DEC private mode
+                append("|\u001B\\][^\u0007\u001B]*[\u0007]")  // OSC ending with BEL
+                append("|\u001B\\][^\u0007\u001B]*\u001B\\\\") // OSC ending with ST
+                append("|\u001B\\([A-Z]")                      // Character set selection
+                append("|\\]697;[^\\]]*")                      // Fig/iTerm2 proprietary sequences
+                append("|[\\x00-\\x08\\x0E-\\x1F]")           // Control chars (keep \t \n \r)
+            }
         )
     }
 

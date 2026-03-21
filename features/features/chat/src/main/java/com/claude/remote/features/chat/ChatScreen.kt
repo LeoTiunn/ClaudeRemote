@@ -54,15 +54,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.claude.remote.core.ui.components.ConnectionStatusDot
-import com.halilibo.richtext.markdown.Markdown
-import com.halilibo.richtext.ui.RichText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +83,11 @@ fun ChatScreen(
 
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            // Scroll to the last item and use a large offset to reach the bottom
+            listState.animateScrollToItem(
+                index = listState.layoutInfo.totalItemsCount - 1,
+                scrollOffset = Int.MAX_VALUE / 2
+            )
         }
     }
 
@@ -178,7 +182,12 @@ fun ChatMessageItem(
     val bgColor = if (message.isUser)
         MaterialTheme.colorScheme.primaryContainer
     else
-        MaterialTheme.colorScheme.surfaceVariant
+        Color(0xFF1E1E2E)  // Dark blue-grey for assistant — readable in dark mode
+
+    val textColor = if (message.isUser)
+        MaterialTheme.colorScheme.onPrimaryContainer
+    else
+        Color(0xFFE0E0E0)  // Light grey text for high contrast
 
     val alignment = if (message.isUser) Alignment.End else Alignment.Start
 
@@ -190,7 +199,7 @@ fun ChatMessageItem(
             shape = RoundedCornerShape(12.dp),
             color = bgColor,
             modifier = Modifier
-                .widthIn(max = 320.dp)
+                .then(if (message.isUser) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth())
                 .combinedClickable(
                     onClick = { showCopyButton = !showCopyButton },
                     onLongClick = {
@@ -204,12 +213,17 @@ fun ChatMessageItem(
                 Text(
                     text = message.content,
                     style = MaterialTheme.typography.bodyLarge,
+                    color = textColor,
                     modifier = Modifier.padding(12.dp)
                 )
             } else {
-                RichText(modifier = Modifier.padding(12.dp)) {
-                    Markdown(message.content)
-                }
+                Text(
+                    text = message.content,
+                    color = textColor,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(12.dp)
+                )
             }
         }
 
