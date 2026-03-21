@@ -33,7 +33,11 @@ class SshClientImpl @Inject constructor() : SshClient {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val _outputFlow = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 64)
+    private val _outputFlow = MutableSharedFlow<String>(
+        replay = 0,
+        extraBufferCapacity = 256,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     override val outputStream: Flow<String> = _outputFlow
 
     private var jschSession: Session? = null
@@ -317,9 +321,11 @@ class SshClientImpl @Inject constructor() : SshClient {
         DebugLog.log("INPUT", "Sending: ${input.take(50)}")
         withContext(Dispatchers.IO) {
             shellOutputStream?.let { stream ->
-                stream.write("$input\n".toByteArray(Charsets.UTF_8))
+                // Use \r (carriage return) for Enter — required when attached to tmux PTY
+                val suffix = if (isAttachedToTmux) "\r" else "\n"
+                stream.write("$input$suffix".toByteArray(Charsets.UTF_8))
                 stream.flush()
-                DebugLog.log("INPUT", "Sent OK")
+                DebugLog.log("INPUT", "Sent OK (suffix=${if (isAttachedToTmux) "CR" else "LF"})")
             } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
         }
     }

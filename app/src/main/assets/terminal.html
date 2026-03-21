@@ -94,10 +94,20 @@ try {
   fallbackEl.style.display = 'block';
 }
 
+// Decode base64 to proper UTF-8 string
+function b64ToUtf8(b64) {
+  var binStr = atob(b64);
+  var bytes = new Uint8Array(binStr.length);
+  for (var i = 0; i < binStr.length; i++) {
+    bytes[i] = binStr.charCodeAt(i);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
 // Called from Android — base64 encoded data
 window.writeBase64 = function(b64) {
   try {
-    var raw = atob(b64);
+    var raw = b64ToUtf8(b64);
     writeCount++;
     if (useXterm && term) {
       term.write(raw);

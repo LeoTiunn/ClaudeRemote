@@ -27,8 +27,12 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     // Raw terminal output for xterm.js WebView
-    // replay=256 ensures data isn't lost before WebView starts collecting
-    private val _terminalOutput = MutableSharedFlow<String>(replay = 256, extraBufferCapacity = 64)
+    // DROP_OLDEST prevents emit() from suspending and blocking the shell reader
+    private val _terminalOutput = MutableSharedFlow<String>(
+        replay = 0,
+        extraBufferCapacity = 512,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
     val terminalOutput: Flow<String> = _terminalOutput.asSharedFlow()
 
     companion object {
