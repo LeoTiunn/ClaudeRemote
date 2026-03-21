@@ -150,7 +150,6 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .imePadding()
         ) {
             // Content area — fills everything above input bar
             if (uiState.isTerminalMode) {
@@ -186,9 +185,11 @@ fun ChatScreen(
                 }
             }
 
-            // Input bar — anchored to bottom
+            // Input bar — anchored to bottom, moves up with keyboard
             Column(
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .imePadding()
             ) {
                 Divider(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
