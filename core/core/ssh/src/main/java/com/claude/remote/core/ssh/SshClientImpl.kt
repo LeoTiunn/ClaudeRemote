@@ -57,8 +57,14 @@ class SshClientImpl @Inject constructor() : SshClient {
         _connectionState.value = ConnectionState.CONNECTING
 
         try {
+            // Resolve hostname to IPv4 address to avoid IPv6 connection issues
+            val addr = java.net.InetAddress.getAllByName(host)
+                .firstOrNull { it is java.net.Inet4Address }
+                ?: java.net.InetAddress.getByName(host)
+            val resolvedHost = addr.hostAddress ?: host
+
             val jsch = JSch()
-            val session = jsch.getSession(username, host, port)
+            val session = jsch.getSession(username, resolvedHost, port)
             session.setPassword(password)
 
             val config = Properties()
