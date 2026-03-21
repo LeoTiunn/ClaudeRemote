@@ -143,23 +143,6 @@ fun SessionSwitcherScreen(
                 }
             }
 
-            // Loading
-            if (uiState.isLoading) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text("Loading sessions & repos...", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-
             uiState.error?.let { errorMessage ->
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -302,6 +285,21 @@ fun SessionSwitcherScreen(
                             RepoCard(repo = repo) {
                                 val session = viewModel.createSessionFromRepo(repo)
                                 onSessionSelected(session.name)
+                            }
+                        }
+                    }
+
+                    // Subtle loading spinner at bottom
+                    if (uiState.isLoading) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             }
                         }
                     }

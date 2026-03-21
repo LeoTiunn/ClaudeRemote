@@ -37,6 +37,14 @@ class MainActivity : ComponentActivity() {
                 AppTheme.SYSTEM -> isSystemInDarkTheme()
             }
 
+            // Sync terminal WebView theme
+            webViewHolder.isDarkTheme = darkTheme
+            webViewHolder.webView?.post {
+                webViewHolder.webView?.evaluateJavascript(
+                    "if(window.setThemeDark)setThemeDark($darkTheme)", null
+                )
+            }
+
             ClaudeRemoteTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

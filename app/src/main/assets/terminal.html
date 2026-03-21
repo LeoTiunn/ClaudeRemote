@@ -208,11 +208,41 @@ window.clearTerminal = function() { if (term) term.clear(); };
 window.setFontSize = function(size) {
   if (term && size > 0) {
     term.options.fontSize = size;
-    // Recalculate dimensions after font change
     if (lastWidthPx > 0 && lastHeightPx > 0) {
       window.setTermSize(lastWidthPx, lastHeightPx);
     }
   }
+};
+
+window.setThemeDark = function(isDark) {
+  if (!term) return;
+  var bg, fg;
+  if (isDark) {
+    bg = '#1C1917'; fg = '#EAE1D9';
+    term.options.theme = {
+      background: bg, foreground: fg,
+      cursor: '#E8A66E', cursorAccent: bg,
+      selectionBackground: '#E8A66E44',
+      black: '#1C1917', red: '#FF6B6B', green: '#87C38A', yellow: '#E8A66E',
+      blue: '#7AAED8', magenta: '#C4A7E7', cyan: '#7DC4C4', white: '#EAE1D9',
+      brightBlack: '#52463A', brightRed: '#FF9B9B', brightGreen: '#A8D8AB',
+      brightYellow: '#F5C98E', brightBlue: '#9EC5E8', brightMagenta: '#D8C4F0',
+      brightCyan: '#A0DEDE', brightWhite: '#FFFFFF'
+    };
+  } else {
+    bg = '#FFF8F4'; fg = '#1F1B16';
+    term.options.theme = {
+      background: bg, foreground: fg,
+      cursor: '#BF5B21', cursorAccent: bg,
+      selectionBackground: '#BF5B2144',
+      black: '#1F1B16', red: '#BA1A1A', green: '#2E6B30', yellow: '#BF5B21',
+      blue: '#3A6EA5', magenta: '#7B5EA7', cyan: '#2A7B7B', white: '#FFF8F4',
+      brightBlack: '#504539', brightRed: '#FF6B6B', brightGreen: '#87C38A',
+      brightYellow: '#E8A66E', brightBlue: '#7AAED8', brightMagenta: '#C4A7E7',
+      brightCyan: '#7DC4C4', brightWhite: '#FFFFFF'
+    };
+  }
+  document.body.style.background = bg;
 };
 </script>
 </body>

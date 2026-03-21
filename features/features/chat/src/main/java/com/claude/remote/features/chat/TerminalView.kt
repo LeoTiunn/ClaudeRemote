@@ -52,7 +52,8 @@ fun TerminalView(
             wv.settings.builtInZoomControls = false
             wv.settings.displayZoomControls = false
 
-            wv.setBackgroundColor(android.graphics.Color.parseColor("#1C1917"))
+            val bgColor = if (webViewHolder.isDarkTheme) "#1C1917" else "#FFF8F4"
+            wv.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
 
             wv.setOnTouchListener { v, event ->
                 when (event.action) {
@@ -71,7 +72,9 @@ fun TerminalView(
                     webViewHolder.markInitialized()
                     pageLoaded.value = true
                     val fs = webViewHolder.fontSize
+                    val dark = webViewHolder.isDarkTheme
                     view?.evaluateJavascript("if(window.setFontSize)setFontSize($fs)", null)
+                    view?.evaluateJavascript("if(window.setThemeDark)setThemeDark($dark)", null)
                     view?.let { sendResizeToJs(it) }
                 }
             }

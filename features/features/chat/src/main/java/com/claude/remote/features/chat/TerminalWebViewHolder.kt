@@ -20,6 +20,7 @@ class TerminalWebViewHolder @Inject constructor() {
         private set
 
     @Volatile var fontSize: Float = 13f
+    @Volatile var isDarkTheme: Boolean = true
 
     // Mutable callback refs — updated by TerminalView composable,
     // called by the JS interface on the singleton WebView
