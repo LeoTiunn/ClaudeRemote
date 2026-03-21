@@ -23,6 +23,8 @@ class TerminalWebViewHolder @Inject constructor(
     var isInitialized: Boolean = false
         private set
 
+    @Volatile var fontSize: Float = 13f
+
     @SuppressLint("SetJavaScriptEnabled")
     fun getOrCreate(): WebView {
         return webView ?: WebView(context).also {

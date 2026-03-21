@@ -8,12 +8,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.claude.remote.features.chat.TerminalWebViewHolder
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
-    val appUpdater: AppUpdater
+    val appUpdater: AppUpdater,
+    private val webViewHolder: TerminalWebViewHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(repository.loadAll())
@@ -52,6 +54,12 @@ class SettingsViewModel @Inject constructor(
     fun onFontSizeChange(size: Float) {
         _uiState.update { it.copy(fontSize = size) }
         repository.setFontSize(size)
+        webViewHolder.fontSize = size
+        webViewHolder.webView?.post {
+            webViewHolder.webView?.evaluateJavascript(
+                "if(window.setFontSize)setFontSize($size)", null
+            )
+        }
     }
 
     fun onPasswordSave(password: String) {

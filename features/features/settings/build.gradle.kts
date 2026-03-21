@@ -34,6 +34,7 @@ android {
 dependencies {
     implementation(project(":core:core:ui"))
     implementation(project(":core:core:ssh"))
+    implementation(project(":features:features:chat"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

@@ -204,6 +204,16 @@ window.writeBase64 = function(b64) {
 };
 
 window.clearTerminal = function() { if (term) term.clear(); };
+
+window.setFontSize = function(size) {
+  if (term && size > 0) {
+    term.options.fontSize = size;
+    // Recalculate dimensions after font change
+    if (lastWidthPx > 0 && lastHeightPx > 0) {
+      window.setTermSize(lastWidthPx, lastHeightPx);
+    }
+  }
+};
 </script>
 </body>
 </html>

@@ -69,6 +69,9 @@ fun TerminalView(
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     webViewHolder.markInitialized()
                     pageLoaded.value = true
+                    // Apply saved font size
+                    val fs = webViewHolder.fontSize
+                    view?.evaluateJavascript("if(window.setFontSize)setFontSize($fs)", null)
                     view?.let { sendResizeToJs(it) }
                 }
             }
