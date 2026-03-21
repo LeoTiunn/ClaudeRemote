@@ -33,6 +33,10 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +47,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,8 +63,10 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.claude.remote.core.ui.components.ConnectionState
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.RichText
@@ -81,7 +88,6 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-scroll to bottom when new messages arrive or content updates
     LaunchedEffect(messages.size, messages.lastOrNull()?.content?.length) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -135,6 +141,47 @@ fun ChatScreen(
                 .padding(paddingValues)
                 .imePadding()
         ) {
+            // Disconnected banner with connect button
+            if (uiState.connectionState == ConnectionState.DISCONNECTED && !uiState.isConnecting) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = uiState.error ?: "Not connected",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(onClick = { viewModel.connect() }) {
+                            Text("Connect")
+                        }
+                    }
+                }
+            }
+
+            // Connecting indicator
+            if (uiState.isConnecting) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Connecting...", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 state = listState,
@@ -159,12 +206,45 @@ fun ChatScreen(
                 text = uiState.inputText,
                 onTextChange = viewModel::onInputChanged,
                 onSend = viewModel::sendMessage,
+                onStop = viewModel::stopStreaming,
+                isStreaming = uiState.isStreaming,
                 isVoiceListening = uiState.isVoiceListening,
                 voicePartialResult = uiState.voicePartialResult,
                 onVoiceToggle = viewModel::toggleVoiceInput,
                 modifier = Modifier.fillMaxWidth()
             )
         }
+    }
+
+    // Password prompt dialog
+    if (uiState.showPasswordPrompt) {
+        var password by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissPasswordPrompt() },
+            title = { Text("SSH Password") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter password to connect")
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.connectWithPassword(password) },
+                    enabled = password.isNotEmpty()
+                ) { Text("Connect") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissPasswordPrompt() }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -215,7 +295,6 @@ fun ChatMessageItem(
             }
         }
 
-        // Copy button row (visible on tap)
         if (showCopyButton && !message.isUser) {
             Row(
                 modifier = Modifier.padding(top = 4.dp),
@@ -300,6 +379,8 @@ fun ChatInputBar(
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStop: () -> Unit = {},
+    isStreaming: Boolean = false,
     isVoiceListening: Boolean = false,
     voicePartialResult: String = "",
     onVoiceToggle: () -> Unit = {},
@@ -345,15 +426,27 @@ fun ChatInputBar(
                 maxLines = 4
             )
 
-            IconButton(onClick = onSend, enabled = text.isNotBlank()) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = if (text.isNotBlank())
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (isStreaming) {
+                // Stop button when streaming
+                IconButton(onClick = onStop) {
+                    Icon(
+                        Icons.Default.Stop,
+                        contentDescription = "Stop",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            } else {
+                // Send button
+                IconButton(onClick = onSend, enabled = text.isNotBlank()) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (text.isNotBlank())
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

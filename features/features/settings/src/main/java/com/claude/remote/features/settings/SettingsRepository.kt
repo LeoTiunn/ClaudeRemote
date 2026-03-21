@@ -27,7 +27,7 @@ class SettingsRepository @Inject constructor(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    fun getSshHost(): String = prefs.getString("ssh_host", "asuscomm.com") ?: "asuscomm.com"
+    fun getSshHost(): String = prefs.getString("ssh_host", "asune.asuscomm.com") ?: "asune.asuscomm.com"
     fun setSshHost(host: String) = prefs.edit().putString("ssh_host", host).apply()
 
     fun getSshPort(): String = prefs.getString("ssh_port", "22") ?: "22"

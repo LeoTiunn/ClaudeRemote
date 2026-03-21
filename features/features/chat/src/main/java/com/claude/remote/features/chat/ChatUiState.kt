@@ -12,7 +12,9 @@ data class ChatUiState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val error: String? = null,
     val isVoiceListening: Boolean = false,
-    val voicePartialResult: String = ""
+    val voicePartialResult: String = "",
+    val showPasswordPrompt: Boolean = false,
+    val isConnecting: Boolean = false
 )
 
 data class ChatMessage(

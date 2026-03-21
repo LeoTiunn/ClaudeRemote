@@ -17,21 +17,20 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
-    private val tmuxSessionManager: TmuxSessionManager
+    private val tmuxSessionManager: TmuxSessionManager,
+    private val settingsRepository: com.claude.remote.features.settings.SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     companion object {
-        // Patterns that indicate Claude CLI has finished responding
         private val PROMPT_MARKERS = listOf(
-            "\$ ",     // Standard bash prompt
-            "\u276F ",  // ❯ Starship / custom prompt
-            ">>> ",    // Python-style prompt
-            "\n> ",    // Claude CLI prompt
+            "\$ ",
+            "\u276F ",
+            ">>> ",
+            "\n> ",
         )
-        // ANSI escape sequence regex for stripping terminal control codes
         private val ANSI_ESCAPE_REGEX = Regex(
             "\u001B\\[[0-9;]*[a-zA-Z]|\u001B\\]\\d+;[^\u0007]*\u0007|\u001B\\([A-Z]"
         )
@@ -48,9 +47,53 @@ class ChatViewModel @Inject constructor(
         // Track connection state
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
-                _uiState.update { it.copy(connectionState = state) }
+                _uiState.update { it.copy(connectionState = state, isConnecting = false) }
             }
         }
+
+        // Auto-connect if we have saved credentials
+        autoConnect()
+    }
+
+    private fun autoConnect() {
+        if (settingsRepository.hasPassword()) {
+            connect()
+        } else {
+            _uiState.update { it.copy(showPasswordPrompt = true) }
+        }
+    }
+
+    fun connect() {
+        val host = settingsRepository.getSshHost()
+        val port = settingsRepository.getSshPort().toIntOrNull() ?: 22
+        val username = settingsRepository.getSshUsername()
+        val password = settingsRepository.getSshPassword()
+
+        if (password.isEmpty()) {
+            _uiState.update { it.copy(showPasswordPrompt = true) }
+            return
+        }
+
+        _uiState.update { it.copy(isConnecting = true, error = null) }
+        viewModelScope.launch {
+            try {
+                sshClient.connect(host, port, username, password)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Connection failed: ${e.message}", isConnecting = false)
+                }
+            }
+        }
+    }
+
+    fun connectWithPassword(password: String) {
+        settingsRepository.setSshPassword(password)
+        _uiState.update { it.copy(showPasswordPrompt = false) }
+        connect()
+    }
+
+    fun dismissPasswordPrompt() {
+        _uiState.update { it.copy(showPasswordPrompt = false) }
     }
 
     private fun handleOutputChunk(rawChunk: String) {
