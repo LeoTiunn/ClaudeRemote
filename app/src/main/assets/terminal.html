@@ -9,41 +9,23 @@
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1C1917; }
   #terminal {
     position: absolute;
-    top: 28px; left: 0; right: 0; bottom: 0;
-  }
-  .xterm, .xterm-viewport, .xterm-screen {
-    width: 100% !important;
-    height: 100% !important;
-  }
-  #status {
-    position: absolute; top: 0; left: 0; right: 0; height: 28px;
-    color: #FFFFFF; font-size: 12px; font-family: monospace;
-    padding: 4px 8px; background: #FF0000; z-index: 9999;
-    overflow: hidden;
+    top: 0; left: 0; right: 0; bottom: 0;
   }
 </style>
 </head>
 <body>
-<div id="status">init...</div>
 <div id="terminal"></div>
+<script src="js/xterm.min.js"></script>
+<script src="js/addon-fit.min.js"></script>
 <script>
-var statusEl = document.getElementById('status');
-var terminalEl = document.getElementById('terminal');
 var term = null;
 var fitAddon = null;
 var writeCount = 0;
 
-function setStatus(msg) {
-  statusEl.textContent = msg;
-}
-
 window.onerror = function(msg, url, line) {
-  setStatus('ERR: ' + msg + ' L' + line);
+  document.title = 'ERR: ' + msg;
 };
-</script>
-<script src="js/xterm.min.js"></script>
-<script src="js/addon-fit.min.js"></script>
-<script>
+
 try {
   term = new Terminal({
     theme: {
@@ -69,25 +51,21 @@ try {
 
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
-  term.open(terminalEl);
+  term.open(document.getElementById('terminal'));
 
   function doFit() {
-    try {
-      fitAddon.fit();
-      setStatus('cols=' + term.cols + ' rows=' + term.rows + ' w=' + terminalEl.offsetWidth + ' h=' + terminalEl.offsetHeight + ' writes=' + writeCount);
-    } catch(e) {
-      setStatus('fit err: ' + e.message);
-    }
+    try { fitAddon.fit(); } catch(e) {}
   }
 
-  // Fit now and repeatedly to catch layout changes
   doFit();
   setTimeout(doFit, 100);
-  setTimeout(doFit, 500);
+  setTimeout(doFit, 300);
+  setTimeout(doFit, 600);
   setTimeout(doFit, 1000);
   setTimeout(doFit, 2000);
+  setTimeout(doFit, 3000);
   window.addEventListener('resize', doFit);
-  new ResizeObserver(doFit).observe(terminalEl);
+  new ResizeObserver(doFit).observe(document.getElementById('terminal'));
 
   term.onData(function(data) {
     if (window.AndroidBridge) window.AndroidBridge.onTerminalInput(data);
@@ -95,10 +73,9 @@ try {
 
   if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
 } catch(e) {
-  setStatus('INIT ERR: ' + e.message);
+  document.title = 'INIT ERR: ' + e.message;
 }
 
-// Decode base64 to proper UTF-8 string
 function b64ToUtf8(b64) {
   var binStr = atob(b64);
   var bytes = new Uint8Array(binStr.length);
@@ -108,28 +85,18 @@ function b64ToUtf8(b64) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-// Called from Android
 window.writeBase64 = function(b64) {
   try {
     var raw = b64ToUtf8(b64);
     writeCount++;
     term.write(raw);
-    // Re-fit on first few writes in case layout wasn't ready
-    if (writeCount <= 3) {
-      setTimeout(function() {
-        try { fitAddon.fit(); } catch(e) {}
-        setStatus('cols=' + term.cols + ' rows=' + term.rows + ' w=' + terminalEl.offsetWidth + ' h=' + terminalEl.offsetHeight + ' writes=' + writeCount);
-      }, 50);
-    }
-    if (writeCount % 50 === 0) {
-      setStatus('cols=' + term.cols + ' rows=' + term.rows + ' writes=' + writeCount);
-    }
-  } catch(e) {
-    setStatus('write err: ' + e.message);
-  }
+    // Re-fit on first writes to pick up correct dimensions
+    if (writeCount <= 3) setTimeout(doFit, 50);
+  } catch(e) {}
 };
 
 window.clearTerminal = function() { if (term) term.clear(); };
+window.doResize = function() { doFit(); };
 </script>
 </body>
 </html>

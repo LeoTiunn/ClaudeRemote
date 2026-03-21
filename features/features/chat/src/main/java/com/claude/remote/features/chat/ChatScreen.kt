@@ -146,26 +146,21 @@ fun ChatScreen(
             )
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Content area — fills everything above input bar
             if (uiState.isTerminalMode) {
-                // xterm.js WebView for tmux sessions
                 TerminalView(
                     outputFlow = viewModel.terminalOutput,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 64.dp)  // Reserve space for input bar
+                        .weight(1f)
+                        .fillMaxWidth()
                 )
             } else {
-                // Regular chat message list
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 64.dp),
+                    modifier = Modifier.weight(1f),
                     state = listState,
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -185,28 +180,24 @@ fun ChatScreen(
                 }
             }
 
-            // Input bar — anchored to bottom, moves up with keyboard
-            Column(
+            Divider(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                thickness = 0.5.dp
+            )
+
+            ChatInputBar(
+                text = uiState.inputText,
+                onTextChange = viewModel::onInputChanged,
+                onSend = viewModel::sendMessage,
+                onStop = viewModel::stopStreaming,
+                isStreaming = uiState.isStreaming && !uiState.isTerminalMode,
+                isVoiceListening = uiState.isVoiceListening,
+                voicePartialResult = uiState.voicePartialResult,
+                onVoiceToggle = viewModel::toggleVoiceInput,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
                     .imePadding()
-            ) {
-                Divider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    thickness = 0.5.dp
-                )
-                ChatInputBar(
-                    text = uiState.inputText,
-                    onTextChange = viewModel::onInputChanged,
-                    onSend = viewModel::sendMessage,
-                    onStop = viewModel::stopStreaming,
-                    isStreaming = uiState.isStreaming && !uiState.isTerminalMode,
-                    isVoiceListening = uiState.isVoiceListening,
-                    voicePartialResult = uiState.voicePartialResult,
-                    onVoiceToggle = viewModel::toggleVoiceInput,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            )
         }
     }
 }
