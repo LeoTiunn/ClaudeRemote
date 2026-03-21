@@ -1,10 +1,10 @@
 package com.claude.remote.core.ssh
 
 import com.claude.remote.core.ui.components.ConnectionState
-import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.OutputStream
 import java.util.Properties
 import javax.inject.Inject
@@ -42,6 +45,18 @@ class SshClientImpl @Inject constructor() : SshClient {
     @Volatile private var username: String = ""
     @Volatile private var password: String = ""
 
+    // For shell-based command execution
+    private val execMutex = Mutex()
+    @Volatile private var pendingCommand: PendingCommand? = null
+
+    private class PendingCommand(
+        val marker: String,
+        val deferred: CompletableDeferred<String>,
+        val outputBuffer: StringBuilder = StringBuilder()
+    ) {
+        var capturing = false
+    }
+
     override suspend fun connect(
         host: String,
         port: Int,
@@ -53,6 +68,17 @@ class SshClientImpl @Inject constructor() : SshClient {
             this@SshClientImpl.port = port
             this@SshClientImpl.username = username
             this@SshClientImpl.password = password
+
+            // Clean up any existing connection first
+            try {
+                shellOutputStream = null
+                shellChannel?.disconnect()
+                jschSession?.disconnect()
+            } catch (_: Exception) {}
+            shellChannel = null
+            jschSession = null
+            pendingCommand?.deferred?.complete("")
+            pendingCommand = null
 
             _connectionState.value = ConnectionState.CONNECTING
             DebugLog.log("SSH", "Connecting to $host:$port as $username")
@@ -95,72 +121,89 @@ class SshClientImpl @Inject constructor() : SshClient {
                 DebugLog.log("SSH", "State -> CONNECTED")
 
                 // Background reader for shell output
-                scope.launch {
-                    DebugLog.log("SHELL", "Reader started")
-                    try {
-                        val buffer = ByteArray(4096)
-                        while (isActive && channel.isConnected && !channel.isClosed) {
-                            val len = shellIn.read(buffer)
-                            if (len == -1) {
-                                DebugLog.log("SHELL", "read() returned -1, EOF")
-                                break
-                            }
-                            if (len > 0) {
-                                val text = String(buffer, 0, len, Charsets.UTF_8)
-                                DebugLog.log("SHELL", "Read ${len}b: ${text.take(100)}")
-                                _outputFlow.emit(text)
-                            }
-                        }
-                        DebugLog.log("SHELL", "Reader loop exited. connected=${channel.isConnected} closed=${channel.isClosed}")
-                    } catch (e: Exception) {
-                        DebugLog.log("SHELL", "Reader exception: ${e.javaClass.simpleName}: ${e.message}")
-                    }
-                    // Only reconnect if the SSH session itself is dead
-                    val sess = jschSession
-                    if (sess == null || !sess.isConnected) {
-                        if (_connectionState.value == ConnectionState.CONNECTED) {
-                            DebugLog.log("SHELL", "Session dead, triggering reconnect")
-                            _connectionState.value = ConnectionState.DISCONNECTED
-                            attemptReconnect()
-                        }
-                    } else {
-                        DebugLog.log("SHELL", "Shell closed but session alive, reopening shell")
-                        // Reopen the shell channel
-                        try {
-                            val newChannel = sess.openChannel("shell") as ChannelShell
-                            newChannel.setPtyType("xterm-256color", 120, 40, 0, 0)
-                            val newShellIn = newChannel.inputStream
-                            this@SshClientImpl.shellOutputStream = newChannel.outputStream
-                            newChannel.connect(10_000)
-                            this@SshClientImpl.shellChannel = newChannel
-                            DebugLog.log("SHELL", "Shell reopened successfully")
-                            // Restart reader for new channel
-                            scope.launch {
-                                try {
-                                    val buf = ByteArray(4096)
-                                    while (isActive && newChannel.isConnected && !newChannel.isClosed) {
-                                        val l = newShellIn.read(buf)
-                                        if (l == -1) break
-                                        if (l > 0) {
-                                            _outputFlow.emit(String(buf, 0, l, Charsets.UTF_8))
-                                        }
-                                    }
-                                } catch (_: Exception) {}
-                                DebugLog.log("SHELL", "Reopened shell reader exited")
-                            }
-                        } catch (e: Exception) {
-                            DebugLog.log("SHELL", "Failed to reopen shell: ${e.message}")
-                            _connectionState.value = ConnectionState.DISCONNECTED
-                            attemptReconnect()
-                        }
-                    }
-                }
+                startShellReader(channel, shellIn)
             } catch (e: Exception) {
                 DebugLog.log("SSH", "Connect failed: ${e.javaClass.simpleName}: ${e.message}")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 throw e
             }
         }
+    }
+
+    private fun startShellReader(channel: ChannelShell, shellIn: java.io.InputStream) {
+        scope.launch {
+            DebugLog.log("SHELL", "Reader started")
+            try {
+                val buffer = ByteArray(4096)
+                while (isActive && channel.isConnected && !channel.isClosed) {
+                    val len = shellIn.read(buffer)
+                    if (len == -1) {
+                        DebugLog.log("SHELL", "read() returned -1, EOF")
+                        break
+                    }
+                    if (len > 0) {
+                        val text = String(buffer, 0, len, Charsets.UTF_8)
+                        DebugLog.log("SHELL", "Read ${len}b: ${text.take(120)}")
+                        processShellOutput(text)
+                    }
+                }
+                DebugLog.log("SHELL", "Reader loop exited. connected=${channel.isConnected} closed=${channel.isClosed}")
+            } catch (e: Exception) {
+                DebugLog.log("SHELL", "Reader exception: ${e.javaClass.simpleName}: ${e.message}")
+            }
+            // Shell died — try to reconnect
+            if (_connectionState.value == ConnectionState.CONNECTED) {
+                DebugLog.log("SHELL", "Shell died, triggering reconnect")
+                // Cancel any pending command
+                pendingCommand?.deferred?.complete("")
+                pendingCommand = null
+                _connectionState.value = ConnectionState.DISCONNECTED
+                attemptReconnect()
+            }
+        }
+    }
+
+    private suspend fun processShellOutput(text: String) {
+        val pending = pendingCommand
+        if (pending != null) {
+            val startMarker = "START_${pending.marker}"
+            val endMarker = "END_${pending.marker}"
+
+            // Process text line by line for marker detection
+            val combined = pending.outputBuffer.toString() + text
+            pending.outputBuffer.clear()
+            pending.outputBuffer.append(combined)
+
+            val content = pending.outputBuffer.toString()
+
+            if (!pending.capturing) {
+                val startIdx = content.indexOf(startMarker)
+                if (startIdx >= 0) {
+                    pending.capturing = true
+                    // Keep only content after start marker
+                    val afterStart = content.substring(startIdx + startMarker.length)
+                    pending.outputBuffer.clear()
+                    pending.outputBuffer.append(afterStart)
+                }
+            }
+
+            if (pending.capturing) {
+                val currentContent = pending.outputBuffer.toString()
+                val endIdx = currentContent.indexOf(endMarker)
+                if (endIdx >= 0) {
+                    val result = currentContent.substring(0, endIdx).trim()
+                    DebugLog.log("EXEC", "Captured result(${result.length}): ${result.take(200)}")
+                    pending.deferred.complete(result)
+                    return
+                }
+            }
+
+            // Don't emit to outputFlow while capturing command output
+            if (pending.capturing) return
+        }
+
+        // Normal shell output — emit to UI
+        _outputFlow.emit(text)
     }
 
     private fun attemptReconnect() {
@@ -192,63 +235,48 @@ class SshClientImpl @Inject constructor() : SshClient {
         }
     }
 
-    override suspend fun executeCommand(command: String): String = withContext(Dispatchers.IO) {
+    override suspend fun executeCommand(command: String): String {
         DebugLog.log("EXEC", "Command: ${command.take(80)}")
-        val session = jschSession
-        if (session == null || !session.isConnected) {
-            DebugLog.log("EXEC", "ERROR: session null=${session == null} connected=${session?.isConnected}")
-            throw IllegalStateException("Not connected (session=${session != null}, connected=${session?.isConnected})")
+
+        if (shellOutputStream == null) {
+            throw IllegalStateException("Not connected (no shell)")
         }
 
-        val channel = session.openChannel("exec") as ChannelExec
-        channel.setCommand(command)
+        return execMutex.withLock {
+            val marker = "CMD_${System.nanoTime()}"
+            val startMarker = "START_$marker"
+            val endMarker = "END_$marker"
+            val deferred = CompletableDeferred<String>()
+            val pending = PendingCommand(marker, deferred)
+            pendingCommand = pending
 
-        val inputStream = channel.inputStream
-        val errStream = channel.errStream
+            // Send command wrapped with markers through the shell channel
+            // echo markers on separate lines, command output in between
+            val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
+            DebugLog.log("EXEC", "Sending via shell with marker $marker")
 
-        DebugLog.log("EXEC", "Connecting exec channel...")
-        channel.connect(10_000)
-        DebugLog.log("EXEC", "Exec channel connected")
-
-        val output = StringBuilder()
-        val errOutput = StringBuilder()
-        val buffer = ByteArray(4096)
-
-        try {
-            var iterations = 0
-            while (true) {
-                iterations++
-                while (inputStream.available() > 0) {
-                    val len = inputStream.read(buffer)
-                    if (len < 0) break
-                    output.append(String(buffer, 0, len, Charsets.UTF_8))
-                }
-                while (errStream.available() > 0) {
-                    val len = errStream.read(buffer)
-                    if (len < 0) break
-                    errOutput.append(String(buffer, 0, len, Charsets.UTF_8))
-                }
-                if (channel.isClosed) {
-                    if (inputStream.available() > 0 || errStream.available() > 0) continue
-                    break
-                }
-                if (iterations > 600) { // 30 second timeout (600 * 50ms)
-                    DebugLog.log("EXEC", "TIMEOUT after 30s")
-                    break
-                }
-                Thread.sleep(50)
+            withContext(Dispatchers.IO) {
+                shellOutputStream?.let { stream ->
+                    stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                } ?: throw IllegalStateException("Shell disconnected")
             }
-            DebugLog.log("EXEC", "Done in $iterations iterations, exit=${channel.exitStatus}")
-            DebugLog.log("EXEC", "stdout(${output.length}): ${output.toString().take(200)}")
-            if (errOutput.isNotEmpty()) {
-                DebugLog.log("EXEC", "stderr(${errOutput.length}): ${errOutput.toString().take(200)}")
-                output.append(errOutput)
+
+            // Wait for result with timeout
+            val result = withTimeoutOrNull(30_000L) {
+                deferred.await()
             }
-        } finally {
-            channel.disconnect()
+
+            pendingCommand = null
+
+            if (result == null) {
+                DebugLog.log("EXEC", "TIMEOUT after 30s")
+                ""
+            } else {
+                DebugLog.log("EXEC", "Result(${result.length}): ${result.take(200)}")
+                result
+            }
         }
-
-        output.toString().trim()
     }
 
     override fun sendInput(input: String) {
