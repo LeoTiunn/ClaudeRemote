@@ -1,6 +1,7 @@
 package com.claude.remote.features.chat
 
 import android.annotation.SuppressLint
+import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -49,35 +50,27 @@ fun TerminalView(
 
             addJavascriptInterface(object {
                 @JavascriptInterface
-                fun onTerminalReady() {
-                    // Terminal is ready
-                }
+                fun onTerminalReady() {}
 
                 @JavascriptInterface
-                fun onTerminalInput(data: String) {
-                    // User typed in terminal — could forward to SSH
-                }
+                fun onTerminalInput(data: String) {}
             }, "AndroidBridge")
 
             loadUrl("file:///android_asset/terminal.html")
         }
     }
 
-    // Wait for page to load, then collect output and push to WebView
+    // Wait for page to load, then collect output and push to WebView via base64
     LaunchedEffect(webView) {
-        // Wait until the page has finished loading
         pageLoaded.first { it }
 
         outputFlow.collect { chunk ->
-            val escaped = chunk
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t")
-                .replace("\u0007", "")  // Strip BEL
+            val b64 = Base64.encodeToString(
+                chunk.toByteArray(Charsets.UTF_8),
+                Base64.NO_WRAP
+            )
             webView.post {
-                webView.evaluateJavascript("writeData(\"$escaped\")", null)
+                webView.evaluateJavascript("writeBase64(\"$b64\")", null)
             }
         }
     }
