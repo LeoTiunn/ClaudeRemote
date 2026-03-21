@@ -10,22 +10,28 @@ import javax.inject.Singleton
 class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
 
     override suspend fun listSessions(client: SshClient): List<TmuxSession> {
-        val output = client.executeCommand("tmux list-sessions -F '#{session_name}|#{window_name}' 2>/dev/null || true")
+        val output = client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux list-sessions -F '#{session_name}|#{pane_current_path}' 2>/dev/null || true")
         if (output.isBlank()) return emptyList()
 
         return output.lines().mapNotNull { line ->
             val parts = line.split("|")
-            if (parts.size >= 2) {
+            if (parts.isNotEmpty() && parts[0].isNotBlank()) {
                 TmuxSession(
                     name = parts[0].trim(),
-                    windowName = parts[1].trim()
+                    windowName = parts.getOrElse(1) { parts[0] }.trim()
                 )
             } else null
         }
     }
 
+    override suspend fun listRemoteRepos(client: SshClient): List<String> {
+        val output = client.executeCommand("find ~/Developer -maxdepth 3 -type d -name .git 2>/dev/null | sed 's|/\\.git\$||' | sed 's|.*/Developer/||' | sort")
+        if (output.isBlank()) return emptyList()
+        return output.lines().filter { it.isNotBlank() }
+    }
+
     override suspend fun createSession(sessionName: String, workingDirectory: String, client: SshClient): TmuxSession {
-        client.executeCommand("tmux new-session -d -s '$sessionName' -c '$workingDirectory' 2>/dev/null || true")
+        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux new-session -d -s '$sessionName' -c '$workingDirectory' 'claude --continue --dangerously-skip-permissions'")
         return TmuxSession(
             name = sessionName,
             windowName = sessionName
@@ -33,7 +39,7 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
     }
 
     override suspend fun attachToSession(sessionName: String, client: SshClient) {
-        client.sendInput("tmux attach -t $sessionName")
+        client.sendInput("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux attach -t '$sessionName'")
     }
 
     override suspend fun sendCommand(sessionName: String, command: String, client: SshClient) {

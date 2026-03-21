@@ -17,8 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
-    private val tmuxSessionManager: TmuxSessionManager,
-    private val settingsRepository: com.claude.remote.features.settings.SettingsRepository
+    private val tmuxSessionManager: TmuxSessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -47,53 +46,9 @@ class ChatViewModel @Inject constructor(
         // Track connection state
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
-                _uiState.update { it.copy(connectionState = state, isConnecting = false) }
+                _uiState.update { it.copy(connectionState = state) }
             }
         }
-
-        // Auto-connect if we have saved credentials
-        autoConnect()
-    }
-
-    private fun autoConnect() {
-        if (settingsRepository.hasPassword()) {
-            connect()
-        } else {
-            _uiState.update { it.copy(showPasswordPrompt = true) }
-        }
-    }
-
-    fun connect() {
-        val host = settingsRepository.getSshHost()
-        val port = settingsRepository.getSshPort().toIntOrNull() ?: 22
-        val username = settingsRepository.getSshUsername()
-        val password = settingsRepository.getSshPassword()
-
-        if (password.isEmpty()) {
-            _uiState.update { it.copy(showPasswordPrompt = true) }
-            return
-        }
-
-        _uiState.update { it.copy(isConnecting = true, error = null) }
-        viewModelScope.launch {
-            try {
-                sshClient.connect(host, port, username, password)
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = "Connection failed: ${e.message}", isConnecting = false)
-                }
-            }
-        }
-    }
-
-    fun connectWithPassword(password: String) {
-        settingsRepository.setSshPassword(password)
-        _uiState.update { it.copy(showPasswordPrompt = false) }
-        connect()
-    }
-
-    fun dismissPasswordPrompt() {
-        _uiState.update { it.copy(showPasswordPrompt = false) }
     }
 
     private fun handleOutputChunk(rawChunk: String) {

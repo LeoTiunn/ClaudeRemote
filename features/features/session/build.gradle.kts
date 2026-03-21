@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":core:core:ui"))
     implementation(project(":core:core:ssh"))
     implementation(project(":core:core:tmux"))
+    implementation(project(":features:features:settings"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -44,6 +45,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.ui.tooling.preview)
 
     implementation(libs.hilt.android)

@@ -16,19 +16,24 @@ object Routes {
 
 @Composable
 fun AppNavigation(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = Routes.CHAT) {
-        composable(Routes.CHAT) {
-            ChatScreen(
-                onNavigateToSessions = { navController.navigate(Routes.SESSIONS) },
-                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
-            )
-        }
+    NavHost(navController = navController, startDestination = Routes.SESSIONS) {
         composable(Routes.SESSIONS) {
             SessionSwitcherScreen(
-                onSessionSelected = { session ->
-                    // Pop back to chat - the ChatViewModel will pick up the session
-                    navController.popBackStack()
+                onSessionSelected = { sessionName ->
+                    navController.navigate(Routes.CHAT) {
+                        popUpTo(Routes.SESSIONS)
+                    }
                 }
+            )
+        }
+        composable(Routes.CHAT) {
+            ChatScreen(
+                onNavigateToSessions = {
+                    navController.navigate(Routes.SESSIONS) {
+                        popUpTo(Routes.SESSIONS) { inclusive = true }
+                    }
+                },
+                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
             )
         }
         composable(Routes.SETTINGS) {

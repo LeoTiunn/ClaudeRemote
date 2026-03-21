@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface TmuxSessionManager {
     suspend fun listSessions(client: SshClient): List<TmuxSession>
+    suspend fun listRemoteRepos(client: SshClient): List<String>
     suspend fun createSession(sessionName: String, workingDirectory: String, client: SshClient): TmuxSession
     suspend fun attachToSession(sessionName: String, client: SshClient)
     suspend fun sendCommand(sessionName: String, command: String, client: SshClient)

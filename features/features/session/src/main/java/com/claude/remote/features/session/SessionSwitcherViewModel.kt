@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSession
 import com.claude.remote.core.tmux.TmuxSessionManager
+import com.claude.remote.core.ui.components.ConnectionState
+import com.claude.remote.features.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,62 +18,116 @@ import javax.inject.Inject
 @HiltViewModel
 class SessionSwitcherViewModel @Inject constructor(
     private val sshClient: SshClient,
-    private val tmuxSessionManager: TmuxSessionManager
+    private val tmuxSessionManager: TmuxSessionManager,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
-    fun loadSessions() {
+    init {
+        viewModelScope.launch {
+            sshClient.connectionState.collect { state ->
+                _uiState.update { it.copy(connectionState = state, isConnecting = false) }
+                if (state == ConnectionState.CONNECTED) {
+                    loadSessionsAndRepos()
+                }
+            }
+        }
+        autoConnect()
+    }
+
+    private fun autoConnect() {
+        if (sshClient.connectionState.value == ConnectionState.CONNECTED) {
+            loadSessionsAndRepos()
+            return
+        }
+        if (settingsRepository.hasPassword()) {
+            connect()
+        } else {
+            _uiState.update { it.copy(showPasswordPrompt = true) }
+        }
+    }
+
+    fun connect() {
+        val host = settingsRepository.getSshHost()
+        val port = settingsRepository.getSshPort().toIntOrNull() ?: 22
+        val username = settingsRepository.getSshUsername()
+        val password = settingsRepository.getSshPassword()
+
+        if (password.isEmpty()) {
+            _uiState.update { it.copy(showPasswordPrompt = true) }
+            return
+        }
+
+        _uiState.update { it.copy(isConnecting = true, error = null) }
+        viewModelScope.launch {
+            try {
+                sshClient.connect(host, port, username, password)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Connection failed: ${e.message}", isConnecting = false)
+                }
+            }
+        }
+    }
+
+    fun connectWithPassword(password: String) {
+        settingsRepository.setSshPassword(password)
+        _uiState.update { it.copy(showPasswordPrompt = false) }
+        connect()
+    }
+
+    fun dismissPasswordPrompt() {
+        _uiState.update { it.copy(showPasswordPrompt = false) }
+    }
+
+    private fun loadSessionsAndRepos() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val sessions = tmuxSessionManager.listSessions(sshClient)
-                _uiState.update { it.copy(sessions = sessions, isLoading = false, error = null) }
+                val repos = tmuxSessionManager.listRemoteRepos(sshClient)
+                _uiState.update {
+                    it.copy(sessions = sessions, repos = repos, isLoading = false, error = null)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
             }
         }
     }
 
-    fun killSession(sessionName: String) {
+    fun attachSession(sessionName: String) {
         viewModelScope.launch {
             try {
-                tmuxSessionManager.killSession(sessionName, sshClient)
-                loadSessions()
+                tmuxSessionManager.attachToSession(sessionName, sshClient)
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }
         }
     }
 
-    fun showNewSessionDialog() {
-        _uiState.update { it.copy(showNewSessionDialog = true) }
-    }
-
-    fun dismissNewSessionDialog() {
-        _uiState.update { it.copy(showNewSessionDialog = false, newSessionName = "", newSessionWorkDir = "~") }
-    }
-
-    fun onNewSessionNameChange(name: String) {
-        _uiState.update { it.copy(newSessionName = name) }
-    }
-
-    fun onNewSessionWorkDirChange(dir: String) {
-        _uiState.update { it.copy(newSessionWorkDir = dir) }
-    }
-
-    fun createSession(onCreated: (TmuxSession) -> Unit) {
-        val name = _uiState.value.newSessionName.trim()
-        val workDir = _uiState.value.newSessionWorkDir.trim()
-        if (name.isEmpty()) return
-
+    fun createSessionFromRepo(repo: String): TmuxSession {
+        val sessionName = repo.substringAfterLast("/")
+        val workDir = "~/Developer/$repo"
         viewModelScope.launch {
             try {
-                val session = tmuxSessionManager.createSession(name, workDir, sshClient)
-                dismissNewSessionDialog()
-                loadSessions()
-                onCreated(session)
+                tmuxSessionManager.createSession(sessionName, workDir, sshClient)
+                // Small delay then attach
+                kotlinx.coroutines.delay(500)
+                tmuxSessionManager.attachToSession(sessionName, sshClient)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.message) }
+            }
+        }
+        return TmuxSession(name = sessionName, windowName = sessionName)
+    }
+
+    fun killSession(sessionName: String) {
+        viewModelScope.launch {
+            try {
+                tmuxSessionManager.killSession(sessionName, sshClient)
+                loadSessionsAndRepos()
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }
