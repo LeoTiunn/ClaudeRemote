@@ -188,11 +188,11 @@ private suspend fun uploadLogs(logText: String): String = withContext(Dispatcher
         connection.disconnect()
 
         if (responseCode in 200..299) {
-            // Try to extract the share link from response
-            val linkMatch = Regex("https?://[^\\s\"<]+/site/[^\\s\"<]+").find(responseBody)
-            val link = linkMatch?.value ?: ""
-            if (link.isNotEmpty()) {
-                "Uploaded! $link"
+            // Extract the file path from response (e.g. /files/UPvBoY4c.txt)
+            val pathMatch = Regex("/files/[^\"<\\s]+").find(responseBody)
+            val path = pathMatch?.value ?: ""
+            if (path.isNotEmpty()) {
+                "Uploaded! https://asune.asuscomm.com:30443$path"
             } else {
                 "Uploaded: $fileName (HTTP $responseCode)"
             }
