@@ -250,13 +250,16 @@ class SshClientImpl @Inject constructor() : SshClient {
             val pending = PendingCommand(marker, deferred)
             pendingCommand = pending
 
-            // Send command wrapped with markers through the shell channel
-            // echo markers on separate lines, command output in between
-            val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
             DebugLog.log("EXEC", "Sending via shell with marker $marker")
 
             withContext(Dispatchers.IO) {
                 shellOutputStream?.let { stream ->
+                    // Disable echo so markers don't appear in echoed input
+                    stream.write("stty -echo\n".toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                    Thread.sleep(50)
+                    // Send command wrapped with markers
+                    val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'; stty echo\n"
                     stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
                     stream.flush()
                 } ?: throw IllegalStateException("Shell disconnected")
@@ -273,10 +276,21 @@ class SshClientImpl @Inject constructor() : SshClient {
                 DebugLog.log("EXEC", "TIMEOUT after 30s")
                 ""
             } else {
-                DebugLog.log("EXEC", "Result(${result.length}): ${result.take(200)}")
-                result
+                // Strip ANSI escape sequences from result
+                val cleaned = stripAnsi(result)
+                DebugLog.log("EXEC", "Result(${cleaned.length}): ${cleaned.take(200)}")
+                cleaned
             }
         }
+    }
+
+    private fun stripAnsi(text: String): String {
+        // Remove ANSI escape sequences, OSC sequences, and control chars
+        return text
+            .replace(Regex("\\x1b\\[[0-9;]*[a-zA-Z]"), "")  // CSI sequences
+            .replace(Regex("\\x1b\\][^\u0007]*[\u0007\u001b\\\\]"), "")  // OSC sequences
+            .replace(Regex("\\x1b\\[\\?[0-9]+[hl]"), "")  // DEC private mode
+            .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
     }
 
     override fun sendInput(input: String) {
