@@ -27,7 +27,8 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     // Raw terminal output for xterm.js WebView
-    private val _terminalOutput = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    // replay=256 ensures data isn't lost before WebView starts collecting
+    private val _terminalOutput = MutableSharedFlow<String>(replay = 256, extraBufferCapacity = 64)
     val terminalOutput: Flow<String> = _terminalOutput.asSharedFlow()
 
     companion object {
@@ -181,26 +182,38 @@ class ChatViewModel @Inject constructor(
         val text = _uiState.value.inputText.trim()
         if (text.isEmpty()) return
 
-        val userMessage = ChatMessage(
-            id = UUID.randomUUID().toString(),
-            content = text,
-            isUser = true
-        )
+        // Clear input immediately
+        _uiState.update { it.copy(inputText = "") }
 
-        _uiState.update {
-            it.copy(
-                messages = it.messages + userMessage,
-                inputText = "",
-                isStreaming = true
+        if (_uiState.value.isTerminalMode) {
+            // Terminal mode: just send to SSH, no chat messages
+            viewModelScope.launch {
+                try {
+                    sshClient.sendInput(text)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message) }
+                }
+            }
+        } else {
+            // Chat mode: add user message bubble
+            val userMessage = ChatMessage(
+                id = UUID.randomUUID().toString(),
+                content = text,
+                isUser = true
             )
-        }
-
-        viewModelScope.launch {
-            try {
-                sshClient.sendInput(text)
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = e.message, isStreaming = false)
+            _uiState.update {
+                it.copy(
+                    messages = it.messages + userMessage,
+                    isStreaming = true
+                )
+            }
+            viewModelScope.launch {
+                try {
+                    sshClient.sendInput(text)
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(error = e.message, isStreaming = false)
+                    }
                 }
             }
         }
