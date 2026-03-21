@@ -19,6 +19,14 @@
   .xterm-rows span {
     font-variant-emoji: text !important;
   }
+  /* Native browser scroll — smooth compositor-layer scrolling */
+  .xterm-viewport {
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+  }
+  .xterm-screen {
+    touch-action: pan-y !important;
+  }
 </style>
 </head>
 <body>
@@ -110,42 +118,14 @@ try {
     }
   };
 
-  // Touch scroll — directly manipulate xterm.js viewport scrollTop for smooth native feel
+  // Scroll-aware write buffering using native browser scroll
   (function() {
     var viewport = document.querySelector('.xterm-viewport');
     if (!viewport) return;
 
-    var lastY = null;
-    var velocity = 0;
-    var lastTime = 0;
-    var momentumId = null;
-    var scrollMultiplier = 1.8; // Amplify finger movement for sensitivity
-
-    var el = document.getElementById('terminal');
-
-    el.addEventListener('touchstart', function(e) {
-      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
-      velocity = 0;
-      isUserScrolling = true;
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (e.touches.length === 1) {
-        lastY = e.touches[0].clientY;
-        lastTime = Date.now();
-      }
-    }, { passive: true });
-
-    el.addEventListener('touchmove', function(e) {
-      if (lastY === null || e.touches.length !== 1) return;
-      e.preventDefault();
-      var y = e.touches[0].clientY;
-      var dy = (lastY - y) * scrollMultiplier;
-      var now = Date.now();
-      var dt = now - lastTime;
-      if (dt > 0) velocity = velocity * 0.4 + (dy / dt) * 0.6;
-      lastY = y;
-      lastTime = now;
-      viewport.scrollTop += dy;
-    }, { passive: false });
+    function isAtBottom() {
+      return viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 5;
+    }
 
     function flushWriteBuffer() {
       isUserScrolling = false;
@@ -154,28 +134,24 @@ try {
         writeBuffer = [];
         term.write(combined);
       }
-      // Scroll to bottom (latest content)
       term.scrollToBottom();
     }
 
-    el.addEventListener('touchend', function() {
-      lastY = null;
-      if (Math.abs(velocity) > 0.15) {
-        var v = velocity * 20;
-        var friction = 0.96;
-        function momentum() {
-          v *= friction;
-          if (Math.abs(v) < 0.3) {
-            // Momentum done — start 3s timeout to auto-flush
-            flushTimer = setTimeout(flushWriteBuffer, 3000);
-            return;
-          }
-          viewport.scrollTop += v;
-          momentumId = requestAnimationFrame(momentum);
+    // Detect when user scrolls away from bottom
+    viewport.addEventListener('scroll', function() {
+      if (isAtBottom()) {
+        // User scrolled back to bottom — flush immediately
+        if (isUserScrolling) {
+          if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+          flushWriteBuffer();
         }
-        momentumId = requestAnimationFrame(momentum);
       } else {
-        // No momentum — start 3s timeout to auto-flush
+        // User scrolled up — start buffering
+        if (!isUserScrolling) {
+          isUserScrolling = true;
+        }
+        // Reset the auto-flush timer on each scroll event
+        if (flushTimer) clearTimeout(flushTimer);
         flushTimer = setTimeout(flushWriteBuffer, 3000);
       }
     }, { passive: true });
