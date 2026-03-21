@@ -1,7 +1,7 @@
 package com.claude.remote.core.tmux
 
+import org.junit.Assert.assertEquals
 import org.junit.Test
-import kotlin.test.assertTrue
 
 class TmuxSessionManagerTest {
 
@@ -11,7 +11,7 @@ class TmuxSessionManagerTest {
             name = "test-session",
             windowName = "test-window"
         )
-        assertTrue(session.name == "test-session")
-        assertTrue(session.windowName == "test-window")
+        assertEquals("test-session", session.name)
+        assertEquals("test-window", session.windowName)
     }
 }
