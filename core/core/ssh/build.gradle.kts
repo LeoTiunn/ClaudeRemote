@@ -25,6 +25,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:core:ui"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.sshd.core)
 

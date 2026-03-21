@@ -1,5 +1,6 @@
 package com.claude.remote.features.chat
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.SshClient
@@ -21,6 +22,89 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    companion object {
+        // Patterns that indicate Claude CLI has finished responding
+        private val PROMPT_MARKERS = listOf(
+            "\$ ",     // Standard bash prompt
+            "\u276F ",  // ❯ Starship / custom prompt
+            ">>> ",    // Python-style prompt
+            "\n> ",    // Claude CLI prompt
+        )
+        // ANSI escape sequence regex for stripping terminal control codes
+        private val ANSI_ESCAPE_REGEX = Regex(
+            "\u001B\\[[0-9;]*[a-zA-Z]|\u001B\\]\\d+;[^\u0007]*\u0007|\u001B\\([A-Z]"
+        )
+    }
+
+    init {
+        // Collect SSH output and build assistant messages
+        viewModelScope.launch {
+            sshClient.outputStream.collect { chunk ->
+                handleOutputChunk(chunk)
+            }
+        }
+
+        // Track connection state
+        viewModelScope.launch {
+            sshClient.connectionState.collect { state ->
+                _uiState.update { it.copy(connectionState = state) }
+            }
+        }
+    }
+
+    private fun handleOutputChunk(rawChunk: String) {
+        // Strip ANSI escape codes from terminal output
+        val chunk = ANSI_ESCAPE_REGEX.replace(rawChunk, "")
+        if (chunk.isEmpty()) return
+
+        // Check if this chunk contains a prompt marker, indicating Claude is done
+        val endsWithPrompt = PROMPT_MARKERS.any { marker -> chunk.endsWith(marker) }
+
+        _uiState.update { state ->
+            val messages = state.messages.toMutableList()
+
+            if (state.isStreaming) {
+                // Strip the prompt marker from the content if present
+                val cleanChunk = if (endsWithPrompt) {
+                    var cleaned = chunk
+                    for (marker in PROMPT_MARKERS) {
+                        if (cleaned.endsWith(marker)) {
+                            cleaned = cleaned.removeSuffix(marker).trimEnd()
+                            break
+                        }
+                    }
+                    cleaned
+                } else {
+                    chunk
+                }
+
+                if (cleanChunk.isNotEmpty()) {
+                    if (messages.isNotEmpty() && !messages.last().isUser) {
+                        // Append to existing assistant message
+                        val lastMsg = messages.last()
+                        messages[messages.lastIndex] = lastMsg.copy(
+                            content = lastMsg.content + cleanChunk
+                        )
+                    } else {
+                        // Create new assistant message
+                        messages.add(
+                            ChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                content = cleanChunk,
+                                isUser = false
+                            )
+                        )
+                    }
+                }
+            }
+
+            state.copy(
+                messages = messages,
+                isStreaming = if (endsWithPrompt) false else state.isStreaming
+            )
+        }
+    }
 
     fun onInputChanged(text: String) {
         _uiState.update { it.copy(inputText = text) }
@@ -55,7 +139,52 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun stopStreaming() {
+        _uiState.update { it.copy(isStreaming = false) }
+    }
+
+    fun copyMessageContent(messageId: String): String? {
+        return _uiState.value.messages.find { it.id == messageId }?.content
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    // Voice input
+
+    private var voiceInputManager: VoiceInputManager? = null
+
+    fun initVoiceInput(context: Context) {
+        if (voiceInputManager == null) {
+            voiceInputManager = VoiceInputManager(context)
+            viewModelScope.launch {
+                voiceInputManager?.state?.collect { voiceState ->
+                    _uiState.update {
+                        it.copy(
+                            isVoiceListening = voiceState.isListening,
+                            voicePartialResult = voiceState.partialResult
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun toggleVoiceInput() {
+        if (_uiState.value.isVoiceListening) {
+            voiceInputManager?.stopListening()
+        } else {
+            voiceInputManager?.startListening { recognizedText ->
+                _uiState.update {
+                    it.copy(inputText = it.inputText + recognizedText)
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceInputManager?.destroy()
     }
 }

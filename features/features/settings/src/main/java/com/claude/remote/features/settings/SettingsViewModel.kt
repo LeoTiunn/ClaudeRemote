@@ -9,36 +9,62 @@ import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 
 @HiltViewModel
-class SettingsViewModel @Inject constructor() : ViewModel() {
+class SettingsViewModel @Inject constructor(
+    private val repository: SettingsRepository
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(repository.loadAll())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     fun onSshHostChange(host: String) {
         _uiState.update { it.copy(sshHost = host) }
+        repository.setSshHost(host)
     }
 
     fun onSshPortChange(port: String) {
         _uiState.update { it.copy(sshPort = port) }
+        repository.setSshPort(port)
     }
 
     fun onSshUsernameChange(username: String) {
         _uiState.update { it.copy(sshUsername = username) }
+        repository.setSshUsername(username)
     }
 
     fun onTmuxPathChange(path: String) {
         _uiState.update { it.copy(tmuxPath = path) }
+        repository.setTmuxPath(path)
     }
 
     fun onClaudePathChange(path: String) {
         _uiState.update { it.copy(claudePath = path) }
+        repository.setClaudePath(path)
     }
 
     fun onThemeChange(theme: AppTheme) {
         _uiState.update { it.copy(theme = theme) }
+        repository.setTheme(theme)
     }
 
     fun onFontSizeChange(size: Float) {
         _uiState.update { it.copy(fontSize = size) }
+        repository.setFontSize(size)
+    }
+
+    fun onPasswordSave(password: String) {
+        repository.setSshPassword(password)
+        _uiState.update { it.copy(showPasswordDialog = false) }
+    }
+
+    fun onPasswordClear() {
+        repository.clearPassword()
+    }
+
+    fun showPasswordDialog() {
+        _uiState.update { it.copy(showPasswordDialog = true) }
+    }
+
+    fun dismissPasswordDialog() {
+        _uiState.update { it.copy(showPasswordDialog = false) }
     }
 }

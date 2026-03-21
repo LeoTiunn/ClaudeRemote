@@ -1,6 +1,7 @@
 package com.claude.remote.features.chat
 
 import com.claude.remote.core.tmux.TmuxSession
+import com.claude.remote.core.ui.components.ConnectionState
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -8,7 +9,10 @@ data class ChatUiState(
     val isLoading: Boolean = false,
     val isStreaming: Boolean = false,
     val currentSession: TmuxSession? = null,
-    val error: String? = null
+    val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val error: String? = null,
+    val isVoiceListening: Boolean = false,
+    val voicePartialResult: String = ""
 )
 
 data class ChatMessage(
