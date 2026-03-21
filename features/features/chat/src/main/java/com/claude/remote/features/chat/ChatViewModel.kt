@@ -20,7 +20,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
-    private val tmuxSessionManager: TmuxSessionManager
+    private val tmuxSessionManager: TmuxSessionManager,
+    val webViewHolder: TerminalWebViewHolder
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -71,6 +72,7 @@ class ChatViewModel @Inject constructor(
     init {
         // Recover terminal mode if SSH is already attached to tmux
         // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
+        _uiState.update { it.copy(sessionName = sshClient.currentSessionName) }
         if (sshClient.isAttachedToTmux) {
             _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
             // Force tmux to redraw so the new WebView gets content

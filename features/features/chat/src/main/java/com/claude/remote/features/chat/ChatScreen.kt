@@ -103,7 +103,7 @@ fun ChatScreen(
                         ConnectionStatusDot(state = uiState.connectionState)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            "Claude Remote",
+                            uiState.sessionName.ifEmpty { "Claude Remote" },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -148,6 +148,7 @@ fun ChatScreen(
                     outputFlow = viewModel.terminalOutput,
                     onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
                     onInput = { data -> viewModel.sendRawEscape(data) },
+                    webViewHolder = viewModel.webViewHolder,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()

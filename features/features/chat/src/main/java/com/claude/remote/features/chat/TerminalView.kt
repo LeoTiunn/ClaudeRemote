@@ -10,11 +10,9 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.claude.remote.core.ssh.DebugLog
 import kotlinx.coroutines.flow.Flow
@@ -27,49 +25,54 @@ fun TerminalView(
     outputFlow: Flow<String>,
     onResize: ((cols: Int, rows: Int) -> Unit)? = null,
     onInput: ((String) -> Unit)? = null,
+    webViewHolder: TerminalWebViewHolder,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val pageLoaded = remember { MutableStateFlow(false) }
     val handler = remember { Handler(Looper.getMainLooper()) }
-    val pendingResize = remember { Runnable { } } // placeholder, replaced below
+    val pageLoaded = remember { MutableStateFlow(webViewHolder.isInitialized) }
+
+    // Mutable callback refs so the singleton WebView always calls the current composable's callbacks
+    val callbacks = remember { TerminalCallbacks() }
+    callbacks.onResize = onResize
+    callbacks.onInput = onInput
 
     val webView = remember {
-        WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.allowFileAccess = true
+        webViewHolder.detachFromParent()
+        val wv = webViewHolder.getOrCreate()
+
+        if (!webViewHolder.isInitialized) {
+            wv.settings.javaScriptEnabled = true
+            wv.settings.domStorageEnabled = true
+            wv.settings.allowFileAccess = true
             @Suppress("DEPRECATION")
-            settings.allowFileAccessFromFileURLs = true
-            settings.loadWithOverviewMode = true
-            settings.useWideViewPort = true
-            settings.builtInZoomControls = false
-            settings.displayZoomControls = false
+            wv.settings.allowFileAccessFromFileURLs = true
+            wv.settings.loadWithOverviewMode = true
+            wv.settings.useWideViewPort = true
+            wv.settings.builtInZoomControls = false
+            wv.settings.displayZoomControls = false
 
-            setBackgroundColor(android.graphics.Color.parseColor("#1C1917"))
+            wv.setBackgroundColor(android.graphics.Color.parseColor("#1C1917"))
 
-                // Prevent parent from intercepting touch — let WebView handle scroll
-                setOnTouchListener { v, event ->
-                    when (event.action) {
-                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                            v.parent?.requestDisallowInterceptTouchEvent(true)
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            v.parent?.requestDisallowInterceptTouchEvent(false)
-                        }
-                    }
-                    false  // Let WebView handle the event
+            wv.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
                 }
+                false
+            }
 
-            webViewClient = object : WebViewClient() {
+            wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
+                    webViewHolder.markInitialized()
                     pageLoaded.value = true
                     view?.let { sendResizeToJs(it) }
                 }
             }
-            webChromeClient = object : WebChromeClient() {
+            wv.webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
                     message?.let {
                         DebugLog.log("WEBVIEW-JS", "${it.messageLevel()}: ${it.message()}")
@@ -78,7 +81,7 @@ fun TerminalView(
                 }
             }
 
-            addJavascriptInterface(object {
+            wv.addJavascriptInterface(object {
                 @JavascriptInterface
                 fun onTerminalReady() {
                     DebugLog.log("WEBVIEW", "Terminal signaled ready")
@@ -87,19 +90,18 @@ fun TerminalView(
                 @JavascriptInterface
                 fun onTerminalInput(data: String) {
                     DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
-                    onInput?.invoke(data)
+                    callbacks.onInput?.invoke(data)
                 }
 
                 @JavascriptInterface
                 fun onTerminalResize(cols: Int, rows: Int) {
                     DebugLog.log("WEBVIEW", "Terminal resized: ${cols}x${rows}")
-                    onResize?.invoke(cols, rows)
+                    callbacks.onResize?.invoke(cols, rows)
                 }
             }, "AndroidBridge")
 
-            // Debounced resize on layout changes (keyboard animation fires dozens of events)
             var resizeRunnable: Runnable? = null
-            addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            wv.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
                 resizeRunnable?.let { handler.removeCallbacks(it) }
                 val runnable = Runnable { sendResizeToJs(v as WebView) }
                 resizeRunnable = runnable
@@ -107,8 +109,14 @@ fun TerminalView(
             }
 
             DebugLog.log("WEBVIEW", "Loading terminal.html")
-            loadUrl("file:///android_asset/terminal.html")
+            wv.loadUrl("file:///android_asset/terminal.html")
+        } else {
+            // Already initialized — just trigger a resize
+            pageLoaded.value = true
+            wv.post { sendResizeToJs(wv) }
         }
+
+        wv
     }
 
     LaunchedEffect(webView) {
@@ -132,16 +140,19 @@ fun TerminalView(
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            webView.destroy()
-        }
-    }
-
     AndroidView(
-        factory = { webView },
+        factory = {
+            webViewHolder.detachFromParent()
+            webView
+        },
         modifier = modifier
     )
+}
+
+/** Mutable callback holder so the singleton WebView always uses current callbacks */
+private class TerminalCallbacks {
+    var onResize: ((cols: Int, rows: Int) -> Unit)? = null
+    var onInput: ((String) -> Unit)? = null
 }
 
 private fun sendResizeToJs(view: WebView) {

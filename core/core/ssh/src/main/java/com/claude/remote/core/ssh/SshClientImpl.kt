@@ -49,6 +49,7 @@ class SshClientImpl @Inject constructor() : SshClient {
     @Volatile private var username: String = ""
     @Volatile private var password: String = ""
     @Volatile override var isAttachedToTmux: Boolean = false
+    @Volatile override var currentSessionName: String = ""
 
     // For shell-based command execution
     private val execMutex = Mutex()
