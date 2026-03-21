@@ -128,7 +128,6 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .imePadding()
         ) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -159,7 +158,9 @@ fun ChatScreen(
                 isVoiceListening = uiState.isVoiceListening,
                 voicePartialResult = uiState.voicePartialResult,
                 onVoiceToggle = viewModel::toggleVoiceInput,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
             )
         }
     }

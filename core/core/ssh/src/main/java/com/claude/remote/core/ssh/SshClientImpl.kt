@@ -98,7 +98,7 @@ class SshClientImpl @Inject constructor() : SshClient {
                 val config = Properties()
                 config["StrictHostKeyChecking"] = "no"
                 session.setConfig(config)
-                session.timeout = 15_000
+                session.timeout = 0  // No socket timeout — rely on keep-alive
                 session.setServerAliveInterval(15_000)
                 session.setServerAliveCountMax(3)
 
