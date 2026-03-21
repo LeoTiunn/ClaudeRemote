@@ -44,7 +44,7 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
         }
         // Use bash as the shell so the session survives if claude exits
         // Use double quotes around -c so $HOME expands
-        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux new-session -d -s '$sessionName' -c \"$workingDirectory\"")
+        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux new-session -d -s '$sessionName' -c \"$workingDirectory\" \\; set-option -t '$sessionName' history-limit 10000")
         // Start claude inside the session (session stays alive as bash even if claude exits)
         client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux send-keys -t '$sessionName' 'claude --continue --dangerously-skip-permissions' Enter")
         return TmuxSession(
@@ -60,7 +60,7 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
     }
 
     override suspend fun capturePane(sessionName: String, client: SshClient): String {
-        return client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux capture-pane -t '$sessionName' -p -S -500 2>/dev/null || true")
+        return client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux capture-pane -t '$sessionName' -p -S - 2>/dev/null || true")
     }
 
     override suspend fun sendCommand(sessionName: String, command: String, client: SshClient) {
