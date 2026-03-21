@@ -54,6 +54,7 @@ class SshClientImpl @Inject constructor() : SshClient {
         val deferred: CompletableDeferred<String>,
         val outputBuffer: StringBuilder = StringBuilder()
     ) {
+        var startCount = 0  // Track how many times we see start marker (1st=echo, 2nd=real)
         var capturing = false
     }
 
@@ -169,22 +170,31 @@ class SshClientImpl @Inject constructor() : SshClient {
             val startMarker = "START_${pending.marker}"
             val endMarker = "END_${pending.marker}"
 
-            // Process text line by line for marker detection
-            val combined = pending.outputBuffer.toString() + text
-            pending.outputBuffer.clear()
-            pending.outputBuffer.append(combined)
-
+            // Accumulate all text
+            pending.outputBuffer.append(text)
             val content = pending.outputBuffer.toString()
 
-            if (!pending.capturing) {
-                val startIdx = content.indexOf(startMarker)
-                if (startIdx >= 0) {
-                    pending.capturing = true
-                    // Keep only content after start marker
-                    val afterStart = content.substring(startIdx + startMarker.length)
-                    pending.outputBuffer.clear()
-                    pending.outputBuffer.append(afterStart)
-                }
+            // Count start markers seen so far
+            // 1st occurrence = echo, 2nd occurrence = real output
+            var searchFrom = 0
+            var count = 0
+            while (true) {
+                val idx = content.indexOf(startMarker, searchFrom)
+                if (idx < 0) break
+                count++
+                searchFrom = idx + startMarker.length
+            }
+
+            if (count >= 2 && !pending.capturing) {
+                // Found the real start marker (2nd occurrence)
+                // Find the 2nd occurrence position
+                val firstIdx = content.indexOf(startMarker)
+                val secondIdx = content.indexOf(startMarker, firstIdx + startMarker.length)
+                pending.capturing = true
+                val afterStart = content.substring(secondIdx + startMarker.length)
+                pending.outputBuffer.clear()
+                pending.outputBuffer.append(afterStart)
+                DebugLog.log("EXEC", "Found real START marker (2nd occurrence)")
             }
 
             if (pending.capturing) {
@@ -198,8 +208,8 @@ class SshClientImpl @Inject constructor() : SshClient {
                 }
             }
 
-            // Don't emit to outputFlow while capturing command output
-            if (pending.capturing) return
+            // Don't emit to outputFlow while waiting for command result
+            return
         }
 
         // Normal shell output — emit to UI
@@ -254,12 +264,7 @@ class SshClientImpl @Inject constructor() : SshClient {
 
             withContext(Dispatchers.IO) {
                 shellOutputStream?.let { stream ->
-                    // Disable echo so markers don't appear in echoed input
-                    stream.write("stty -echo\n".toByteArray(Charsets.UTF_8))
-                    stream.flush()
-                    Thread.sleep(50)
-                    // Send command wrapped with markers
-                    val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'; stty echo\n"
+                    val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
                     stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
                     stream.flush()
                 } ?: throw IllegalStateException("Shell disconnected")
