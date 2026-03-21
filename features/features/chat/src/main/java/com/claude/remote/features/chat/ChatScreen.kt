@@ -410,6 +410,7 @@ fun TerminalKeysBar(
         "Esc" to "\u001b",           // Escape
         "C-c" to "\u0003",          // Ctrl+C (interrupt)
         "C-b" to "\u0002",          // Ctrl+B (tmux prefix)
+        "Ent" to "\r",              // Enter / Return
         "Tab" to "\t",                // Tab (autocomplete)
         "⇧Tab" to "\u001b[Z",       // Shift+Tab (claude mode switch)
         "←" to "\u001b[D",           // Arrow left
