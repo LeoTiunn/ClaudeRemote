@@ -1,16 +1,19 @@
 package com.claude.remote.features.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val repository: SettingsRepository
+    private val repository: SettingsRepository,
+    val appUpdater: AppUpdater
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(repository.loadAll())
@@ -66,5 +69,15 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissPasswordDialog() {
         _uiState.update { it.copy(showPasswordDialog = false) }
+    }
+
+    fun checkForUpdate() {
+        viewModelScope.launch {
+            appUpdater.checkForUpdate()
+        }
+    }
+
+    fun downloadAndInstallUpdate() {
+        appUpdater.downloadAndInstall()
     }
 }

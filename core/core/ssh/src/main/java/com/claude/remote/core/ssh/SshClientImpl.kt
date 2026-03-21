@@ -1,6 +1,10 @@
 package com.claude.remote.core.ssh
 
 import com.claude.remote.core.ui.components.ConnectionState
+import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.ChannelShell
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -10,12 +14,12 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.apache.sshd.client.channel.ClientChannel
-import org.apache.sshd.client.channel.ClientChannelEvent
-import org.apache.sshd.client.session.ClientSession
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,78 +34,71 @@ class SshClientImpl @Inject constructor() : SshClient {
     private val _outputFlow = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 64)
     override val outputStream: Flow<String> = _outputFlow
 
-    private var client: org.apache.sshd.client.SshClient? = null
-    private var session: ClientSession? = null
-    private var channel: ClientChannel? = null
-    private var channelInput: OutputStream? = null
+    private var jschSession: Session? = null
+    private var shellChannel: ChannelShell? = null
+    private var shellOutputStream: OutputStream? = null
 
-    // Stored credentials for auto-reconnect
     @Volatile private var host: String = ""
     @Volatile private var port: Int = 22
     @Volatile private var username: String = ""
     @Volatile private var password: String = ""
 
-    override suspend fun connect(host: String, port: Int, username: String, password: String) {
-        // Store credentials for reconnect
-        this.host = host
-        this.port = port
-        this.username = username
-        this.password = password
+    override suspend fun connect(
+        host: String,
+        port: Int,
+        username: String,
+        password: String
+    ) = withContext(Dispatchers.IO) {
+        this@SshClientImpl.host = host
+        this@SshClientImpl.port = port
+        this@SshClientImpl.username = username
+        this@SshClientImpl.password = password
 
         _connectionState.value = ConnectionState.CONNECTING
 
         try {
-            val sshClient = org.apache.sshd.client.SshClient.setUpDefaultClient().apply { start() }
-            this.client = sshClient
+            val jsch = JSch()
+            val session = jsch.getSession(username, host, port)
+            session.setPassword(password)
 
-            val sess = sshClient.connect(username, host, port).verify(10_000).session
-            sess.addPasswordIdentity(password)
-            sess.auth().verify(10_000)
-            this.session = sess
+            val config = Properties()
+            config["StrictHostKeyChecking"] = "no"
+            session.setConfig(config)
+            session.timeout = 15_000
+            session.connect(15_000)
 
-            val ch = sess.createShellChannel()
-            ch.open().verify(10_000)
-            this.channel = ch
+            this@SshClientImpl.jschSession = session
 
-            // invertedIn is the OutputStream we write to, which feeds the channel's stdin
-            this.channelInput = ch.invertedIn
+            val channel = session.openChannel("shell") as ChannelShell
+            channel.setPtyType("xterm-256color", 120, 40, 0, 0)
 
-            // Read output from the channel's stdout in background
+            val inputStream: InputStream = channel.inputStream
+            this@SshClientImpl.shellOutputStream = channel.outputStream
+
+            channel.connect(10_000)
+            this@SshClientImpl.shellChannel = channel
+
+            // Read shell output in background
             scope.launch {
                 try {
                     val buffer = ByteArray(4096)
-                    val input: InputStream = ch.invertedOut
-                    while (true) {
-                        val len = input.read(buffer)
-                        if (len == -1) break
-                        if (len > 0) {
-                            _outputFlow.emit(String(buffer, 0, len, Charsets.UTF_8))
+                    while (isActive && channel.isConnected) {
+                        val available = inputStream.available()
+                        if (available > 0) {
+                            val len = inputStream.read(buffer, 0, minOf(available, buffer.size))
+                            if (len > 0) {
+                                _outputFlow.emit(String(buffer, 0, len, Charsets.UTF_8))
+                            }
+                        } else {
+                            delay(50)
                         }
                     }
                 } catch (e: Exception) {
-                    // Stream ended or error
+                    // Stream closed
                 }
-                // Connection dropped — attempt auto-reconnect
                 if (_connectionState.value == ConnectionState.CONNECTED) {
                     _connectionState.value = ConnectionState.DISCONNECTED
                     attemptReconnect()
-                }
-            }
-
-            // Also read stderr in background
-            scope.launch {
-                try {
-                    val buffer = ByteArray(4096)
-                    val errInput: InputStream = ch.invertedErr
-                    while (true) {
-                        val len = errInput.read(buffer)
-                        if (len == -1) break
-                        if (len > 0) {
-                            _outputFlow.emit(String(buffer, 0, len, Charsets.UTF_8))
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Stream ended
                 }
             }
 
@@ -127,50 +124,44 @@ class SshClientImpl @Inject constructor() : SshClient {
         }
     }
 
-    override suspend fun disconnect() {
-        channelInput = null
-        channel?.close()
-        session?.close()
-        client?.stop()
-        client?.close()
-        channel = null
-        session = null
-        client = null
+    override suspend fun disconnect() = withContext(Dispatchers.IO) {
+        shellOutputStream = null
+        try { shellChannel?.disconnect() } catch (_: Exception) {}
+        try { jschSession?.disconnect() } catch (_: Exception) {}
+        shellChannel = null
+        jschSession = null
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
-    override suspend fun executeCommand(command: String): String {
-        val sess = session ?: throw IllegalStateException("Not connected")
-        val execChannel = sess.createExecChannel(command)
+    override suspend fun executeCommand(command: String): String = withContext(Dispatchers.IO) {
+        val session = jschSession ?: throw IllegalStateException("Not connected")
+        val channel = session.openChannel("exec") as ChannelExec
+        channel.setCommand(command)
+        channel.inputStream = null
+
         val output = StringBuilder()
+        val inputStream = channel.inputStream
 
         try {
-            execChannel.open().verify(10_000)
-
-            // Read all output from the exec channel
+            channel.connect(10_000)
             val buffer = ByteArray(4096)
-            val input: InputStream = execChannel.invertedOut
             while (true) {
-                val len = input.read(buffer)
+                val len = inputStream.read(buffer)
                 if (len == -1) break
                 if (len > 0) {
                     output.append(String(buffer, 0, len, Charsets.UTF_8))
                 }
+                if (channel.isClosed) break
             }
-
-            execChannel.waitFor(
-                setOf(ClientChannelEvent.CLOSED, ClientChannelEvent.EXIT_STATUS),
-                30_000
-            )
         } finally {
-            execChannel.close()
+            channel.disconnect()
         }
 
-        return output.toString().trim()
+        output.toString().trim()
     }
 
     override fun sendInput(input: String) {
-        channelInput?.let { stream ->
+        shellOutputStream?.let { stream ->
             stream.write("$input\n".toByteArray(Charsets.UTF_8))
             stream.flush()
         }

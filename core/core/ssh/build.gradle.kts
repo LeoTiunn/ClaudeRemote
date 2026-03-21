@@ -27,7 +27,7 @@ android {
 dependencies {
     implementation(project(":core:core:ui"))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.sshd.core)
+    implementation(libs.jsch)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
