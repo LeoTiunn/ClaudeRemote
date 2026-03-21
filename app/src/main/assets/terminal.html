@@ -114,6 +114,7 @@ try {
     var velocity = 0;
     var lastTime = 0;
     var momentumId = null;
+    var scrollMultiplier = 1.8; // Amplify finger movement for sensitivity
 
     var el = document.getElementById('terminal');
 
@@ -130,10 +131,10 @@ try {
       if (lastY === null || e.touches.length !== 1) return;
       e.preventDefault();
       var y = e.touches[0].clientY;
-      var dy = lastY - y;
+      var dy = (lastY - y) * scrollMultiplier;
       var now = Date.now();
       var dt = now - lastTime;
-      if (dt > 0) velocity = velocity * 0.6 + (dy / dt) * 0.4;
+      if (dt > 0) velocity = velocity * 0.4 + (dy / dt) * 0.6;
       lastY = y;
       lastTime = now;
       viewport.scrollTop += dy;
@@ -141,12 +142,12 @@ try {
 
     el.addEventListener('touchend', function() {
       lastY = null;
-      if (Math.abs(velocity) > 0.3) {
-        var v = velocity * 16;
-        var friction = 0.95;
+      if (Math.abs(velocity) > 0.15) {
+        var v = velocity * 20;
+        var friction = 0.96;
         function momentum() {
           v *= friction;
-          if (Math.abs(v) < 0.5) return;
+          if (Math.abs(v) < 0.3) return;
           viewport.scrollTop += v;
           momentumId = requestAnimationFrame(momentum);
         }
