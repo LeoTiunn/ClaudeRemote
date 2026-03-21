@@ -11,7 +11,8 @@ data class ChatUiState(
     val isTerminalMode: Boolean = false,
     val error: String? = null,
     val isVoiceListening: Boolean = false,
-    val voicePartialResult: String = ""
+    val voicePartialResult: String = "",
+    val wordWrap: Boolean = true
 )
 
 data class ChatMessage(

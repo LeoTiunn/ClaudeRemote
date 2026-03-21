@@ -24,27 +24,26 @@ fun AppNavigation(navController: NavHostController) {
                 onSessionSelected = { sessionName ->
                     navController.navigate(Routes.CHAT) {
                         popUpTo(Routes.SESSIONS)
+                        launchSingleTop = true
                     }
                 },
-                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                onNavigateToDebugLog = { navController.navigate(Routes.DEBUG_LOG) }
+                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
+                onNavigateToDebugLog = { navController.navigate(Routes.DEBUG_LOG) { launchSingleTop = true } }
             )
         }
         composable(Routes.CHAT) {
             ChatScreen(
                 onNavigateToSessions = {
-                    navController.navigate(Routes.SESSIONS) {
-                        popUpTo(Routes.SESSIONS) { inclusive = true }
-                    }
+                    navController.popBackStack()
                 },
-                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
+                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } }
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen()
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.DEBUG_LOG) {
-            DebugLogScreen()
+            DebugLogScreen(onBack = { navController.popBackStack() })
         }
     }
 }

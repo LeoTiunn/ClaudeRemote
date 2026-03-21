@@ -11,6 +11,14 @@
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
   }
+  /* Force text rendering instead of emoji for Unicode symbols */
+  .xterm-rows {
+    font-variant-emoji: text !important;
+    text-rendering: optimizeLegibility !important;
+  }
+  .xterm-rows span {
+    font-variant-emoji: text !important;
+  }
 </style>
 </head>
 <body>
@@ -21,6 +29,10 @@
 var term = null;
 var fitAddon = null;
 var writeCount = 0;
+var lastCols = 0;
+var lastRows = 0;
+var lastWidthPx = 0;
+var lastHeightPx = 0;
 
 window.onerror = function(msg, url, line) {
   document.title = 'ERR: ' + msg;
@@ -40,49 +52,130 @@ try {
       brightYellow: '#F5C98E', brightBlue: '#9EC5E8', brightMagenta: '#D8C4F0',
       brightCyan: '#A0DEDE', brightWhite: '#FFFFFF'
     },
-    fontFamily: 'monospace',
+    fontFamily: '"Noto Sans Mono", "Droid Sans Mono", monospace',
     fontSize: 13,
     lineHeight: 1.15,
     scrollback: 5000,
     cursorBlink: true,
     cursorStyle: 'block',
-    convertEol: false
+    convertEol: false,
+    scrollOnUserInput: true
   });
 
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
-  // Manual resize from Android — bypasses fitAddon which reports wrong dimensions
-  window.resizeTo = function(widthPx, heightPx) {
+  function notifySize(cols, rows) {
+    if (cols !== lastCols || rows !== lastRows) {
+      lastCols = cols;
+      lastRows = rows;
+      if (window.AndroidBridge) {
+        window.AndroidBridge.onTerminalResize(cols, rows);
+      }
+    }
+  }
+
+  // Manual resize from Android pixel dimensions
+  window.setTermSize = function(widthPx, heightPx) {
+    lastWidthPx = widthPx;
+    lastHeightPx = heightPx;
+    var cols, rows;
     try {
-      // Measure character cell size from xterm's rendered font
       var core = term._core;
       var cellW = core._renderService.dimensions.css.cell.width;
       var cellH = core._renderService.dimensions.css.cell.height;
       if (cellW > 0 && cellH > 0) {
-        var cols = Math.floor(widthPx / cellW);
-        var rows = Math.floor(heightPx / cellH);
-        if (cols > 10 && rows > 3) {
-          term.resize(cols, rows);
-        }
+        cols = Math.floor(widthPx / cellW);
+        rows = Math.floor(heightPx / cellH);
       }
-    } catch(e) {
-      // Fallback: estimate with font size
-      var cols = Math.floor(widthPx / 8);
-      var rows = Math.floor(heightPx / 16);
-      if (cols > 10 && rows > 3) {
-        try { term.resize(cols, rows); } catch(e2) {}
-      }
+    } catch(e) {}
+
+    // Fallback
+    if (!cols || !rows || cols < 10 || rows < 3) {
+      cols = Math.floor(widthPx / 8);
+      rows = Math.floor(heightPx / 16);
+    }
+
+    if (cols > 10 && rows > 3) {
+      try {
+        term.resize(cols, rows);
+        notifySize(cols, rows);
+      } catch(e) {}
     }
   };
 
-  function doFit() {
-    try { fitAddon.fit(); } catch(e) {}
-  }
-  // Try fitAddon as well
-  doFit();
-  window.addEventListener('resize', doFit);
+  // Touch scroll using term.scrollLines() on the terminal element.
+  // Canvas sits on top of viewport, so we must listen on #terminal.
+  (function() {
+    var lastY = null;
+    var velocity = 0;
+    var lastTime = 0;
+    var accum = 0;
+    var momentumId = null;
+    var cellH = 16;
+    try {
+      var ch = term._core._renderService.dimensions.css.cell.height;
+      if (ch > 0) cellH = ch;
+    } catch(e) {}
+
+    var el = document.getElementById('terminal');
+
+    el.addEventListener('touchstart', function(e) {
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
+      velocity = 0;
+      accum = 0;
+      if (e.touches.length === 1) {
+        lastY = e.touches[0].clientY;
+        lastTime = Date.now();
+      }
+    }, { passive: true });
+
+    el.addEventListener('touchmove', function(e) {
+      if (lastY === null || e.touches.length !== 1) return;
+      e.preventDefault();
+      var y = e.touches[0].clientY;
+      var dy = lastY - y;
+      var now = Date.now();
+      var dt = now - lastTime;
+      if (dt > 0) velocity = velocity * 0.3 + (dy / dt) * 0.7;
+      accum += dy;
+      lastY = y;
+      lastTime = now;
+
+      // Scroll in 3-line chunks to reduce re-renders
+      var lines = Math.trunc(accum / cellH);
+      if (Math.abs(lines) >= 2) {
+        term.scrollLines(lines);
+        accum -= lines * cellH;
+      }
+    }, { passive: false });
+
+    el.addEventListener('touchend', function() {
+      lastY = null;
+      // Flush remaining
+      var lines = Math.trunc(accum / cellH);
+      if (lines !== 0) { term.scrollLines(lines); accum = 0; }
+
+      // Momentum — scroll in bigger jumps, fewer re-renders
+      if (Math.abs(velocity) > 0.2) {
+        var v = velocity * 16;
+        var friction = 0.94;
+        function momentum() {
+          v *= friction;
+          if (Math.abs(v) < 1) return;
+          accum += v;
+          var lines = Math.trunc(accum / cellH);
+          if (Math.abs(lines) >= 2) {
+            term.scrollLines(lines);
+            accum -= lines * cellH;
+          }
+          momentumId = requestAnimationFrame(momentum);
+        }
+        momentumId = requestAnimationFrame(momentum);
+      }
+    }, { passive: true });
+  })();
 
   term.onData(function(data) {
     if (window.AndroidBridge) window.AndroidBridge.onTerminalInput(data);
@@ -107,13 +200,10 @@ window.writeBase64 = function(b64) {
     var raw = b64ToUtf8(b64);
     writeCount++;
     term.write(raw);
-    // Re-fit on first writes to pick up correct dimensions
-    if (writeCount <= 3) setTimeout(doFit, 50);
   } catch(e) {}
 };
 
 window.clearTerminal = function() { if (term) term.clear(); };
-window.doResize = function() { doFit(); };
 </script>
 </body>
 </html>

@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
@@ -37,13 +40,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -59,6 +67,14 @@ fun SessionSwitcherScreen(
     viewModel: SessionSwitcherViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Refresh sessions every time this screen becomes visible (RESUMED)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.onScreenVisible()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -167,16 +183,22 @@ fun SessionSwitcherScreen(
             }
 
             if (uiState.connectionState == ConnectionState.CONNECTED || uiState.sessions.isNotEmpty() || uiState.repos.isNotEmpty()) {
-                // Repo search field
+                // Repo search field — press Enter or tap search icon to search
                 var searchQuery by remember { mutableStateOf("") }
                 OutlinedTextField(
                     value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        viewModel.searchRepos(it)
-                    },
+                    onValueChange = { searchQuery = it },
                     label = { Text("Search repos...") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { viewModel.searchRepos(searchQuery) }
+                    ),
+                    trailingIcon = {
+                        IconButton(onClick = { viewModel.searchRepos(searchQuery) }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -248,53 +270,43 @@ fun SessionSwitcherScreen(
                         item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
 
-                    // Search results section
-                    if (uiState.repos.isNotEmpty()) {
+                    // Search results OR history section
+                    if (uiState.isSearching && uiState.repos.isNotEmpty()) {
+                        // Search results
                         item {
                             Text(
-                                "Repos",
+                                "Search Results",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
                         items(uiState.repos, key = { "repo-$it" }) { repo ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val session = viewModel.createSessionFromRepo(repo)
-                                        onSessionSelected(session.name)
-                                    },
-                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Folder,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.size(12.dp))
-                                    Column {
-                                        Text(
-                                            text = repo.substringAfterLast("/"),
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                        Text(
-                                            text = "~/Developer/$repo",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                            RepoCard(repo = repo) {
+                                searchQuery = ""
+                                val session = viewModel.createSessionFromRepo(repo)
+                                onSessionSelected(session.name)
+                            }
+                        }
+                    } else if (uiState.repoHistory.isNotEmpty()) {
+                        // History
+                        item {
+                            Text(
+                                "Recent",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        items(uiState.repoHistory, key = { "history-$it" }) { repo ->
+                            RepoCard(repo = repo) {
+                                val session = viewModel.createSessionFromRepo(repo)
+                                onSessionSelected(session.name)
                             }
                         }
                     }
 
-                    if (uiState.sessions.isEmpty() && uiState.repos.isEmpty() && !uiState.isLoading && searchQuery.isEmpty()) {
+                    if (uiState.sessions.isEmpty() && uiState.repoHistory.isEmpty() && !uiState.isLoading && searchQuery.isEmpty()) {
                         item {
                             Column(
                                 modifier = Modifier
@@ -349,5 +361,38 @@ fun SessionSwitcherScreen(
                 TextButton(onClick = { viewModel.dismissPasswordPrompt() }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun RepoCard(repo: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.size(12.dp))
+            Column {
+                Text(
+                    text = repo.substringAfterLast("/"),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "~/Developer/$repo",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }

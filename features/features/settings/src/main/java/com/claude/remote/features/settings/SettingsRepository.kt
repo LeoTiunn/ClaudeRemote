@@ -59,6 +59,19 @@ class SettingsRepository @Inject constructor(
     fun getFontSize(): Float = prefs.getFloat("font_size", 16f)
     fun setFontSize(size: Float) = prefs.edit().putFloat("font_size", size).apply()
 
+    fun getRepoHistory(): List<String> {
+        val raw = prefs.getString("repo_history", "") ?: ""
+        return if (raw.isBlank()) emptyList() else raw.split("\n").filter { it.isNotBlank() }
+    }
+
+    fun addRepoToHistory(repo: String) {
+        val history = getRepoHistory().toMutableList()
+        history.remove(repo) // Remove if exists (will re-add at top)
+        history.add(0, repo) // Most recent first
+        val trimmed = history.take(20) // Keep last 20
+        prefs.edit().putString("repo_history", trimmed.joinToString("\n")).apply()
+    }
+
     fun loadAll(): SettingsUiState = SettingsUiState(
         sshHost = getSshHost(),
         sshPort = getSshPort(),

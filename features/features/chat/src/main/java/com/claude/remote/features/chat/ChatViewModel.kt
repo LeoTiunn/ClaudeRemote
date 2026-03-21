@@ -69,10 +69,23 @@ class ChatViewModel @Inject constructor(
     }
 
     init {
+        // Recover terminal mode if SSH is already attached to tmux
+        // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
+        if (sshClient.isAttachedToTmux) {
+            _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
+            // Force tmux to redraw so the new WebView gets content
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(500) // Wait for WebView to load
+                try {
+                    // Send refresh sequence: Ctrl+L redraws the screen
+                    sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
+                } catch (_: Exception) {}
+            }
+        }
+
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
                 if (sshClient.isAttachedToTmux) {
-                    // Terminal mode: send raw output to xterm.js
                     _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
                     _terminalOutput.emit(chunk)
                 } else {
@@ -182,6 +195,10 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = text) }
     }
 
+    fun resizeTerminal(cols: Int, rows: Int) {
+        sshClient.resizePty(cols, rows)
+    }
+
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
         if (text.isEmpty()) return
@@ -220,6 +237,14 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             }
+        }
+    }
+
+    fun sendRawEscape(sequence: String) {
+        viewModelScope.launch {
+            try {
+                sshClient.sendRawBytes(sequence.toByteArray(Charsets.UTF_8))
+            } catch (_: Exception) {}
         }
     }
 

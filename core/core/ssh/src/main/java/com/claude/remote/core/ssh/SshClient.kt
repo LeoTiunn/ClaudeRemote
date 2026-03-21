@@ -13,4 +13,6 @@ interface SshClient {
     suspend fun disconnect()
     suspend fun executeCommand(command: String): String
     suspend fun sendInput(input: String)
+    suspend fun sendRawBytes(data: ByteArray)
+    fun resizePty(cols: Int, rows: Int)
 }

@@ -36,7 +36,17 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
     }
 
     override suspend fun createSession(sessionName: String, workingDirectory: String, client: SshClient): TmuxSession {
-        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux new-session -d -s '$sessionName' -c '$workingDirectory' 'claude --continue --dangerously-skip-permissions'")
+        // Check if session already exists — if so, just reuse it
+        val existing = client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux has-session -t '$sessionName' 2>/dev/null && echo EXISTS || echo NONE")
+        if (existing.trim() == "EXISTS") {
+            DebugLog.log("TMUX", "Session '$sessionName' already exists, reusing")
+            return TmuxSession(name = sessionName, windowName = sessionName)
+        }
+        // Use bash as the shell so the session survives if claude exits
+        // Use double quotes around -c so $HOME expands
+        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux new-session -d -s '$sessionName' -c \"$workingDirectory\"")
+        // Start claude inside the session (session stays alive as bash even if claude exits)
+        client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux send-keys -t '$sessionName' 'claude --continue --dangerously-skip-permissions' Enter")
         return TmuxSession(
             name = sessionName,
             windowName = sessionName

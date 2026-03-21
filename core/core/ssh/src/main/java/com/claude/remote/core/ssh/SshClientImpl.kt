@@ -114,7 +114,8 @@ class SshClientImpl @Inject constructor() : SshClient {
                 this@SshClientImpl.jschSession = session
 
                 val channel = session.openChannel("shell") as ChannelShell
-                channel.setPtyType("xterm-256color", 120, 40, 0, 0)
+                // Start with phone-sized terminal; will be resized by TerminalView
+                channel.setPtyType("xterm-256color", 52, 40, 0, 0)
 
                 val shellIn = channel.inputStream
                 this@SshClientImpl.shellOutputStream = channel.outputStream
@@ -315,6 +316,24 @@ class SshClientImpl @Inject constructor() : SshClient {
             .replace(Regex("\\x1b\\][^\u0007]*[\u0007\u001b\\\\]"), "")  // OSC sequences
             .replace(Regex("\\x1b\\[\\?[0-9]+[hl]"), "")  // DEC private mode
             .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
+    }
+
+    override fun resizePty(cols: Int, rows: Int) {
+        DebugLog.log("SSH", "Resizing PTY to ${cols}x${rows}")
+        try {
+            shellChannel?.setPtySize(cols, rows, cols * 8, rows * 16)
+        } catch (e: Exception) {
+            DebugLog.log("SSH", "PTY resize failed: ${e.message}")
+        }
+    }
+
+    override suspend fun sendRawBytes(data: ByteArray) {
+        withContext(Dispatchers.IO) {
+            shellOutputStream?.let { stream ->
+                stream.write(data)
+                stream.flush()
+            }
+        }
     }
 
     override suspend fun sendInput(input: String) {

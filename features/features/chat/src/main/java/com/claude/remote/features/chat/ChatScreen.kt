@@ -61,11 +61,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -154,6 +156,7 @@ fun ChatScreen(
             if (uiState.isTerminalMode) {
                 TerminalView(
                     outputFlow = viewModel.terminalOutput,
+                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -184,6 +187,13 @@ fun ChatScreen(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 thickness = 0.5.dp
             )
+
+            if (uiState.isTerminalMode) {
+                TerminalKeysBar(
+                    onKey = { seq -> viewModel.sendRawEscape(seq) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             ChatInputBar(
                 text = uiState.inputText,
@@ -330,7 +340,7 @@ fun StreamingIndicator(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ChatInputBar(
     text: String,
@@ -343,6 +353,11 @@ fun ChatInputBar(
     onVoiceToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val sendAndHideKeyboard = {
+        onSend()
+        keyboardController?.hide()
+    }
     Column(modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         if (isVoiceListening) {
             Text(
@@ -404,7 +419,7 @@ fun ChatInputBar(
                         cursorColor = MaterialTheme.colorScheme.primary
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
+                    keyboardActions = KeyboardActions(onSend = { sendAndHideKeyboard() }),
                     maxLines = 4,
                     singleLine = false
                 )
@@ -432,7 +447,7 @@ fun ChatInputBar(
                     }
                 } else {
                     IconButton(
-                        onClick = onSend,
+                        onClick = { sendAndHideKeyboard() },
                         enabled = text.isNotBlank(),
                         modifier = Modifier.size(40.dp)
                     ) {
@@ -460,6 +475,52 @@ fun ChatInputBar(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun TerminalKeysBar(
+    onKey: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val keys = listOf(
+        "⇧Tab" to "\u001b[Z",       // Shift+Tab
+        "Tab" to "\t",                // Tab
+        "Enter" to "\r",             // Enter/Return
+        "C-c" to "\u0003",          // Ctrl+C
+        "C-b" to "\u0002",          // Ctrl+B (tmux prefix)
+        "Esc" to "\u001b",           // Escape
+        "↑" to "\u001b[A",           // Arrow up
+        "↓" to "\u001b[B",           // Arrow down
+        "→" to "\u001b[C",           // Arrow right
+    )
+
+    Row(
+        modifier = modifier
+            .padding(horizontal = 4.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        keys.forEach { (label, seq) ->
+            Surface(
+                onClick = { onKey(seq) },
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 2.dp,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = label,
+                    style = TextStyle(
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
     }

@@ -1,8 +1,10 @@
 package com.claude.remote.features.chat
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
-import android.view.View
+import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -23,10 +25,13 @@ import kotlinx.coroutines.flow.first
 @Composable
 fun TerminalView(
     outputFlow: Flow<String>,
+    onResize: ((cols: Int, rows: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val pageLoaded = remember { MutableStateFlow(false) }
+    val handler = remember { Handler(Looper.getMainLooper()) }
+    val pendingResize = remember { Runnable { } } // placeholder, replaced below
 
     val webView = remember {
         WebView(context).apply {
@@ -42,12 +47,24 @@ fun TerminalView(
 
             setBackgroundColor(android.graphics.Color.parseColor("#1C1917"))
 
+                // Prevent parent from intercepting touch — let WebView handle scroll
+                setOnTouchListener { v, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                            v.parent?.requestDisallowInterceptTouchEvent(true)
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            v.parent?.requestDisallowInterceptTouchEvent(false)
+                        }
+                    }
+                    false  // Let WebView handle the event
+                }
+
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     pageLoaded.value = true
-                    // Trigger resize after page load
                     view?.let { sendResizeToJs(it) }
                 }
             }
@@ -70,11 +87,21 @@ fun TerminalView(
                 fun onTerminalInput(data: String) {
                     DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
                 }
+
+                @JavascriptInterface
+                fun onTerminalResize(cols: Int, rows: Int) {
+                    DebugLog.log("WEBVIEW", "Terminal resized: ${cols}x${rows}")
+                    onResize?.invoke(cols, rows)
+                }
             }, "AndroidBridge")
 
-            // Send dimensions whenever layout changes
+            // Debounced resize on layout changes (keyboard animation fires dozens of events)
+            var resizeRunnable: Runnable? = null
             addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-                sendResizeToJs(v as WebView)
+                resizeRunnable?.let { handler.removeCallbacks(it) }
+                val runnable = Runnable { sendResizeToJs(v as WebView) }
+                resizeRunnable = runnable
+                handler.postDelayed(runnable, 150)
             }
 
             DebugLog.log("WEBVIEW", "Loading terminal.html")
@@ -122,9 +149,9 @@ private fun sendResizeToJs(view: WebView) {
         val scale = view.resources.displayMetrics.density
         val cssW = (w / scale).toInt()
         val cssH = (h / scale).toInt()
-        DebugLog.log("WEBVIEW", "Layout change: ${w}x${h}px, CSS: ${cssW}x${cssH}dp")
+        DebugLog.log("WEBVIEW", "Layout: ${w}x${h}px, CSS: ${cssW}x${cssH}dp")
         view.post {
-            view.evaluateJavascript("if(window.resizeTo)resizeTo($cssW,$cssH)", null)
+            view.evaluateJavascript("if(window.setTermSize)setTermSize($cssW,$cssH)", null)
         }
     }
 }
