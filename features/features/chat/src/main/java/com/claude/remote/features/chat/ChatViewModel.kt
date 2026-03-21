@@ -30,8 +30,18 @@ class ChatViewModel @Inject constructor(
             ">>> ",
             "\n> ",
         )
-        // Cursor-forward: \e[nC — replace with n spaces (preserves visual gaps)
+
+        // Cursor home: \e[H or \e[1;1H — signals a full screen refresh
+        private val CURSOR_HOME_REGEX = Regex("\u001B\\[(?:H|1;1H|\\?1049[hl])")
+
+        // Cursor position: \e[row;colH — replace with newline
+        private val CURSOR_POSITION_REGEX = Regex("\u001B\\[\\d+;\\d+[Hf]")
+
+        // Cursor forward: \e[nC — replace with n spaces
         private val CURSOR_FORWARD_REGEX = Regex("\u001B\\[(\\d*)C")
+
+        // Erase sequences: \e[nK (erase line), \e[nJ (erase screen)
+        private val ERASE_REGEX = Regex("\u001B\\[\\d*[JK]")
 
         // All other ANSI/terminal sequences — strip entirely
         private val ANSI_ESCAPE_REGEX = Regex(
@@ -47,14 +57,12 @@ class ChatViewModel @Inject constructor(
     }
 
     init {
-        // Collect SSH output and build assistant messages
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
                 handleOutputChunk(chunk)
             }
         }
 
-        // Track connection state
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
                 _uiState.update { it.copy(connectionState = state) }
@@ -62,27 +70,49 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun handleOutputChunk(rawChunk: String) {
-        // 1. Replace cursor-forward sequences with spaces (preserves visual gaps)
-        val withSpaces = CURSOR_FORWARD_REGEX.replace(rawChunk) { match ->
+    private fun cleanTerminalOutput(raw: String): String {
+        var text = raw
+
+        // 1. Replace cursor-position sequences with newlines (preserves line structure)
+        text = CURSOR_POSITION_REGEX.replace(text, "\n")
+
+        // 2. Replace cursor-forward with spaces (preserves visual gaps)
+        text = CURSOR_FORWARD_REGEX.replace(text) { match ->
             val n = match.groupValues[1].toIntOrNull() ?: 1
             " ".repeat(n.coerceIn(1, 40))
         }
-        // 2. Strip all other ANSI escape codes
-        val chunk = ANSI_ESCAPE_REGEX.replace(withSpaces, "")
+
+        // 3. Remove erase sequences
+        text = ERASE_REGEX.replace(text, "")
+
+        // 4. Strip all remaining ANSI escape codes
+        text = ANSI_ESCAPE_REGEX.replace(text, "")
+
+        // 5. Clean up: collapse multiple blank lines, trim trailing whitespace per line
+        text = text.lines()
+            .map { it.trimEnd() }
+            .joinToString("\n")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
+        return text
+    }
+
+    private fun handleOutputChunk(rawChunk: String) {
+        // Detect screen refresh (cursor home = tmux redrawing entire screen)
+        val isScreenRefresh = CURSOR_HOME_REGEX.containsMatchIn(rawChunk)
+
+        val chunk = cleanTerminalOutput(rawChunk)
         if (chunk.isEmpty()) return
 
-        // Check if this chunk contains a prompt marker, indicating Claude is done
         val endsWithPrompt = PROMPT_MARKERS.any { marker -> chunk.endsWith(marker) }
 
         _uiState.update { state ->
             val messages = state.messages.toMutableList()
 
-            // Always process output — auto-start streaming if we get tmux output
             val isStreaming = state.isStreaming || sshClient.isAttachedToTmux
 
             if (isStreaming) {
-                // Strip the prompt marker from the content if present
                 val cleanChunk = if (endsWithPrompt) {
                     var cleaned = chunk
                     for (marker in PROMPT_MARKERS) {
@@ -98,13 +128,20 @@ class ChatViewModel @Inject constructor(
 
                 if (cleanChunk.isNotEmpty()) {
                     if (messages.isNotEmpty() && !messages.last().isUser) {
-                        // Append to existing assistant message
-                        val lastMsg = messages.last()
-                        messages[messages.lastIndex] = lastMsg.copy(
-                            content = lastMsg.content + cleanChunk
-                        )
+                        if (isScreenRefresh) {
+                            // Screen refresh: REPLACE last message (tmux redraws entire screen)
+                            val lastMsg = messages.last()
+                            messages[messages.lastIndex] = lastMsg.copy(
+                                content = cleanChunk
+                            )
+                        } else {
+                            // Normal output: append
+                            val lastMsg = messages.last()
+                            messages[messages.lastIndex] = lastMsg.copy(
+                                content = lastMsg.content + cleanChunk
+                            )
+                        }
                     } else {
-                        // Create new assistant message
                         messages.add(
                             ChatMessage(
                                 id = UUID.randomUUID().toString(),
