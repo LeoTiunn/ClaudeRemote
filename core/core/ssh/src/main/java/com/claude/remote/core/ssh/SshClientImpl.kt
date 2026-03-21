@@ -48,7 +48,7 @@ class SshClientImpl @Inject constructor() : SshClient {
         port: Int,
         username: String,
         password: String
-    ) = withContext(Dispatchers.IO) {
+    ) { withContext(Dispatchers.IO) {
         this@SshClientImpl.host = host
         this@SshClientImpl.port = port
         this@SshClientImpl.username = username
@@ -71,8 +71,12 @@ class SshClientImpl @Inject constructor() : SshClient {
             config["StrictHostKeyChecking"] = "no"
             session.setConfig(config)
             session.timeout = 15_000
-            session.connect(15_000)
 
+            // Keep-alive to prevent idle disconnects
+            session.setServerAliveInterval(15_000)
+            session.setServerAliveCountMax(3)
+
+            session.connect(15_000)
             this@SshClientImpl.jschSession = session
 
             val channel = session.openChannel("shell") as ChannelShell
@@ -84,11 +88,17 @@ class SshClientImpl @Inject constructor() : SshClient {
             channel.connect(10_000)
             this@SshClientImpl.shellChannel = channel
 
+            _connectionState.value = ConnectionState.CONNECTED
+
             // Read shell output in background
             scope.launch {
                 try {
                     val buffer = ByteArray(4096)
-                    while (isActive && channel.isConnected) {
+                    while (isActive) {
+                        val sess = jschSession
+                        val ch = shellChannel
+                        if (sess == null || !sess.isConnected || ch == null || ch.isClosed) break
+
                         val available = inputStream.available()
                         if (available > 0) {
                             val len = inputStream.read(buffer, 0, minOf(available, buffer.size))
@@ -96,30 +106,29 @@ class SshClientImpl @Inject constructor() : SshClient {
                                 _outputFlow.emit(String(buffer, 0, len, Charsets.UTF_8))
                             }
                         } else {
-                            delay(50)
+                            delay(100)
                         }
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Stream closed
                 }
+                // Only trigger disconnect if we think we're still connected
                 if (_connectionState.value == ConnectionState.CONNECTED) {
                     _connectionState.value = ConnectionState.DISCONNECTED
                     attemptReconnect()
                 }
             }
-
-            _connectionState.value = ConnectionState.CONNECTED
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.DISCONNECTED
             throw e
         }
-    }
+    } }
 
     private fun attemptReconnect() {
         if (host.isBlank()) return
         scope.launch {
             for (attempt in 1..5) {
-                delay(attempt * 2000L)
+                delay(attempt * 3000L)
                 try {
                     connect(host, port, username, password)
                     return@launch
@@ -131,19 +140,19 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override suspend fun disconnect() = withContext(Dispatchers.IO) {
+        _connectionState.value = ConnectionState.DISCONNECTED
         shellOutputStream = null
         try { shellChannel?.disconnect() } catch (_: Exception) {}
         try { jschSession?.disconnect() } catch (_: Exception) {}
         shellChannel = null
         jschSession = null
-        _connectionState.value = ConnectionState.DISCONNECTED
     }
 
     override suspend fun executeCommand(command: String): String = withContext(Dispatchers.IO) {
         val session = jschSession ?: throw IllegalStateException("Not connected")
         val channel = session.openChannel("exec") as ChannelExec
         channel.setCommand(command)
-        channel.inputStream = null
+        channel.setErrStream(System.err)
 
         val output = StringBuilder()
         val inputStream = channel.inputStream
@@ -151,13 +160,20 @@ class SshClientImpl @Inject constructor() : SshClient {
         try {
             channel.connect(10_000)
             val buffer = ByteArray(4096)
+            // Read all output until channel closes
             while (true) {
-                val len = inputStream.read(buffer)
-                if (len == -1) break
-                if (len > 0) {
-                    output.append(String(buffer, 0, len, Charsets.UTF_8))
+                while (inputStream.available() > 0) {
+                    val len = inputStream.read(buffer)
+                    if (len > 0) {
+                        output.append(String(buffer, 0, len, Charsets.UTF_8))
+                    }
                 }
-                if (channel.isClosed) break
+                if (channel.isClosed) {
+                    // Read any remaining data after close
+                    if (inputStream.available() > 0) continue
+                    break
+                }
+                delay(100)
             }
         } finally {
             channel.disconnect()
