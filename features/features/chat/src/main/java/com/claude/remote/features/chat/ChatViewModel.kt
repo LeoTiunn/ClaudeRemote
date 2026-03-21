@@ -62,7 +62,10 @@ class ChatViewModel @Inject constructor(
         _uiState.update { state ->
             val messages = state.messages.toMutableList()
 
-            if (state.isStreaming) {
+            // Always process output — auto-start streaming if we get tmux output
+            val isStreaming = state.isStreaming || sshClient.isAttachedToTmux
+
+            if (isStreaming) {
                 // Strip the prompt marker from the content if present
                 val cleanChunk = if (endsWithPrompt) {
                     var cleaned = chunk
@@ -99,7 +102,7 @@ class ChatViewModel @Inject constructor(
 
             state.copy(
                 messages = messages,
-                isStreaming = if (endsWithPrompt) false else state.isStreaming
+                isStreaming = if (endsWithPrompt) false else isStreaming
             )
         }
     }
