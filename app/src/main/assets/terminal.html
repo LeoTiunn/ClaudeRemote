@@ -9,51 +9,60 @@
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1C1917; }
   #terminal { width: 100%; height: 100%; }
   .xterm { padding: 4px; }
-  #debug { position: fixed; top: 0; left: 0; color: #E8A66E; font-size: 10px;
-            font-family: monospace; z-index: 9999; padding: 2px 4px;
-            background: rgba(0,0,0,0.8); pointer-events: none; }
+  #fallback {
+    display: none;
+    width: 100%; height: 100%; overflow: auto;
+    background: #1C1917; color: #EAE1D9;
+    font-family: monospace; font-size: 12px;
+    white-space: pre; padding: 8px;
+  }
+  #status {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    color: #E8A66E; font-size: 11px; font-family: monospace;
+    padding: 2px 8px; background: rgba(0,0,0,0.9); z-index: 9999;
+  }
 </style>
 </head>
 <body>
-<div id="debug">loading...</div>
 <div id="terminal"></div>
+<div id="fallback"></div>
+<div id="status">init...</div>
 <script>
-var dbg = document.getElementById('debug');
-function log(msg) {
-  dbg.textContent = msg;
+var statusEl = document.getElementById('status');
+var fallbackEl = document.getElementById('fallback');
+var terminalEl = document.getElementById('terminal');
+var useXterm = false;
+var term = null;
+var writeCount = 0;
+
+function setStatus(msg) {
+  statusEl.textContent = msg;
   if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
 }
-window.onerror = function(msg, url, line) { log('ERR: ' + msg + ' L' + line); };
+
+window.onerror = function(msg, url, line) {
+  setStatus('JS ERR: ' + msg + ' L' + line);
+};
 </script>
 <script src="js/xterm.min.js"></script>
 <script src="js/addon-fit.min.js"></script>
 <script>
-log('scripts loaded');
-
 try {
-  var term = new Terminal({
+  if (typeof Terminal === 'undefined') throw new Error('Terminal not loaded');
+  if (typeof FitAddon === 'undefined') throw new Error('FitAddon not loaded');
+
+  term = new Terminal({
     theme: {
       background: '#1C1917',
       foreground: '#EAE1D9',
       cursor: '#E8A66E',
       cursorAccent: '#1C1917',
       selectionBackground: '#E8A66E44',
-      black: '#1C1917',
-      red: '#FF6B6B',
-      green: '#87C38A',
-      yellow: '#E8A66E',
-      blue: '#7AAED8',
-      magenta: '#C4A7E7',
-      cyan: '#7DC4C4',
-      white: '#EAE1D9',
-      brightBlack: '#52463A',
-      brightRed: '#FF9B9B',
-      brightGreen: '#A8D8AB',
-      brightYellow: '#F5C98E',
-      brightBlue: '#9EC5E8',
-      brightMagenta: '#D8C4F0',
-      brightCyan: '#A0DEDE',
-      brightWhite: '#FFFFFF'
+      black: '#1C1917', red: '#FF6B6B', green: '#87C38A', yellow: '#E8A66E',
+      blue: '#7AAED8', magenta: '#C4A7E7', cyan: '#7DC4C4', white: '#EAE1D9',
+      brightBlack: '#52463A', brightRed: '#FF9B9B', brightGreen: '#A8D8AB',
+      brightYellow: '#F5C98E', brightBlue: '#9EC5E8', brightMagenta: '#D8C4F0',
+      brightCyan: '#A0DEDE', brightWhite: '#FFFFFF'
     },
     fontFamily: 'monospace',
     fontSize: 13,
@@ -66,52 +75,53 @@ try {
 
   var fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
+  term.open(terminalEl);
 
-  term.open(document.getElementById('terminal'));
-
-  function doFit() {
-    try { fitAddon.fit(); } catch(e) {}
-  }
+  function doFit() { try { fitAddon.fit(); } catch(e) {} }
   doFit();
   window.addEventListener('resize', doFit);
-  new ResizeObserver(doFit).observe(document.getElementById('terminal'));
-
-  var writeCount = 0;
-
-  // Called from Android — receives base64-encoded data
-  window.writeBase64 = function(b64) {
-    try {
-      var raw = atob(b64);
-      term.write(raw);
-      writeCount++;
-      log('ok: ' + writeCount + ' writes, last ' + raw.length + 'b');
-    } catch(e) {
-      log('write err: ' + e.message);
-    }
-  };
-
-  // Fallback: plain string (for simple data)
-  window.writeData = function(data) {
-    term.write(data);
-    writeCount++;
-    log('ok: ' + writeCount + ' writes');
-  };
-
-  window.clearTerminal = function() { term.clear(); };
-  window.getSize = function() {
-    return JSON.stringify({ cols: term.cols, rows: term.rows });
-  };
+  new ResizeObserver(doFit).observe(terminalEl);
 
   term.onData(function(data) {
     if (window.AndroidBridge) window.AndroidBridge.onTerminalInput(data);
   });
 
-  log('ready, cols=' + term.cols + ' rows=' + term.rows);
-  dbg.style.display = 'none';
-
+  useXterm = true;
+  setStatus('xterm ready, cols=' + term.cols + ' rows=' + term.rows);
 } catch(e) {
-  log('INIT ERR: ' + e.message);
+  setStatus('xterm failed: ' + e.message + ', using fallback');
+  terminalEl.style.display = 'none';
+  fallbackEl.style.display = 'block';
 }
+
+// Called from Android — base64 encoded data
+window.writeBase64 = function(b64) {
+  try {
+    var raw = atob(b64);
+    writeCount++;
+    if (useXterm && term) {
+      term.write(raw);
+    } else {
+      fallbackEl.textContent += raw;
+      fallbackEl.scrollTop = fallbackEl.scrollHeight;
+    }
+    if (writeCount <= 5 || writeCount % 50 === 0) {
+      setStatus('writes: ' + writeCount + ', last: ' + raw.length + 'b, xterm=' + useXterm);
+    }
+  } catch(e) {
+    setStatus('write err #' + writeCount + ': ' + e.message);
+  }
+};
+
+window.clearTerminal = function() {
+  if (useXterm && term) term.clear();
+  else fallbackEl.textContent = '';
+};
+
+// Hide status after 10s if working
+setTimeout(function() {
+  if (writeCount > 0) statusEl.style.display = 'none';
+}, 10000);
 </script>
 </body>
 </html>

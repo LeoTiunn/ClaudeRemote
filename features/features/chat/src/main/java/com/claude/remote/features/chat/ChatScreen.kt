@@ -150,12 +150,15 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
         ) {
             if (uiState.isTerminalMode) {
                 // xterm.js WebView for tmux sessions
                 TerminalView(
                     outputFlow = viewModel.terminalOutput,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
                 )
             } else {
                 // Regular chat message list
@@ -198,7 +201,6 @@ fun ChatScreen(
                 onVoiceToggle = viewModel::toggleVoiceInput,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .imePadding()
             )
         }
     }

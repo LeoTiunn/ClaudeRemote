@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import com.claude.remote.core.ssh.DebugLog
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -43,32 +44,57 @@ fun TerminalView(
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     pageLoaded.value = true
                 }
+
+                override fun onReceivedError(
+                    view: WebView?, errorCode: Int, description: String?, failingUrl: String?
+                ) {
+                    DebugLog.log("WEBVIEW", "ERROR: $errorCode $description url=$failingUrl")
+                }
             }
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
+                    message?.let {
+                        DebugLog.log("WEBVIEW-JS", "${it.messageLevel()}: ${it.message()}")
+                    }
+                    return true
+                }
+            }
 
             addJavascriptInterface(object {
                 @JavascriptInterface
-                fun onTerminalReady() {}
+                fun onTerminalReady() {
+                    DebugLog.log("WEBVIEW", "Terminal signaled ready")
+                }
 
                 @JavascriptInterface
-                fun onTerminalInput(data: String) {}
+                fun onTerminalInput(data: String) {
+                    DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
+                }
             }, "AndroidBridge")
 
+            DebugLog.log("WEBVIEW", "Loading terminal.html")
             loadUrl("file:///android_asset/terminal.html")
         }
     }
 
-    // Wait for page to load, then collect output and push to WebView via base64
     LaunchedEffect(webView) {
+        DebugLog.log("WEBVIEW", "Waiting for page load...")
         pageLoaded.first { it }
+        DebugLog.log("WEBVIEW", "Page loaded, starting to collect output")
 
+        var count = 0
         outputFlow.collect { chunk ->
+            count++
             val b64 = Base64.encodeToString(
                 chunk.toByteArray(Charsets.UTF_8),
                 Base64.NO_WRAP
             )
+            if (count <= 5 || count % 50 == 0) {
+                DebugLog.log("WEBVIEW", "Sending chunk #$count (${chunk.length}b, b64=${b64.length})")
+            }
             webView.post {
                 webView.evaluateJavascript("writeBase64(\"$b64\")", null)
             }
