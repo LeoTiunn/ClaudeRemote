@@ -134,7 +134,13 @@ private suspend fun uploadLogs(logText: String): String = withContext(Dispatcher
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val fileName = "claude-remote-log-$timestamp.txt"
         val boundary = "----FormBoundary${System.currentTimeMillis()}"
-        val url = URL("https://asune.asuscomm.com:30443/")
+        val url = URL("https://asune.asuscomm.com:30443/upload")
+
+        // Basic auth: apa:hibikiboba
+        val credentials = android.util.Base64.encodeToString(
+            "apa:hibikiboba".toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP
+        )
 
         val connection = (url.openConnection() as HttpsURLConnection).apply {
             // Trust self-signed cert on user's own server
@@ -151,6 +157,7 @@ private suspend fun uploadLogs(logText: String): String = withContext(Dispatcher
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            setRequestProperty("Authorization", "Basic $credentials")
             connectTimeout = 15_000
             readTimeout = 15_000
         }
@@ -181,7 +188,14 @@ private suspend fun uploadLogs(logText: String): String = withContext(Dispatcher
         connection.disconnect()
 
         if (responseCode in 200..299) {
-            "Uploaded: $fileName (HTTP $responseCode)"
+            // Try to extract the share link from response
+            val linkMatch = Regex("https?://[^\\s\"<]+/site/[^\\s\"<]+").find(responseBody)
+            val link = linkMatch?.value ?: ""
+            if (link.isNotEmpty()) {
+                "Uploaded! $link"
+            } else {
+                "Uploaded: $fileName (HTTP $responseCode)"
+            }
         } else {
             "Error: HTTP $responseCode - ${responseBody.take(100)}"
         }
