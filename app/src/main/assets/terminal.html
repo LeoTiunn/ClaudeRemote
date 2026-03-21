@@ -17,9 +17,9 @@
     white-space: pre; padding: 8px;
   }
   #status {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    color: #E8A66E; font-size: 11px; font-family: monospace;
-    padding: 2px 8px; background: rgba(0,0,0,0.9); z-index: 9999;
+    position: fixed; top: 0; left: 0; right: 0;
+    color: #FFFFFF; font-size: 16px; font-family: monospace; font-weight: bold;
+    padding: 8px 12px; background: #FF0000; z-index: 9999;
   }
 </style>
 </head>
@@ -128,10 +128,7 @@ window.clearTerminal = function() {
   else fallbackEl.textContent = '';
 };
 
-// Hide status after 10s if working
-setTimeout(function() {
-  if (writeCount > 0) statusEl.style.display = 'none';
-}, 10000);
+// Keep status visible for debugging
 </script>
 </body>
 </html>
