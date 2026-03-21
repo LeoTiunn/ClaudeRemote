@@ -154,6 +154,8 @@ try {
         writeBuffer = [];
         term.write(combined);
       }
+      // Scroll to bottom (latest content)
+      term.scrollToBottom();
     }
 
     el.addEventListener('touchend', function() {
@@ -164,8 +166,8 @@ try {
         function momentum() {
           v *= friction;
           if (Math.abs(v) < 0.3) {
-            // Momentum done — flush buffered writes after short delay
-            flushTimer = setTimeout(flushWriteBuffer, 100);
+            // Momentum done — start 3s timeout to auto-flush
+            flushTimer = setTimeout(flushWriteBuffer, 3000);
             return;
           }
           viewport.scrollTop += v;
@@ -173,8 +175,8 @@ try {
         }
         momentumId = requestAnimationFrame(momentum);
       } else {
-        // No momentum — flush immediately
-        flushTimer = setTimeout(flushWriteBuffer, 100);
+        // No momentum — start 3s timeout to auto-flush
+        flushTimer = setTimeout(flushWriteBuffer, 3000);
       }
     }, { passive: true });
   })();
