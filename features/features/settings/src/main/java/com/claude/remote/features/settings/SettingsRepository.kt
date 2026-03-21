@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +29,11 @@ class SettingsRepository @Inject constructor(
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    private val _themeFlow = MutableStateFlow(
+        AppTheme.valueOf(prefs.getString("theme", "SYSTEM") ?: "SYSTEM")
+    )
+    val themeFlow: StateFlow<AppTheme> = _themeFlow.asStateFlow()
 
     fun getSshHost(): String = prefs.getString("ssh_host", "asune.asuscomm.com") ?: "asune.asuscomm.com"
     fun setSshHost(host: String) = prefs.edit().putString("ssh_host", host).apply()
@@ -54,7 +62,10 @@ class SettingsRepository @Inject constructor(
     fun getTheme(): AppTheme =
         AppTheme.valueOf(prefs.getString("theme", "SYSTEM") ?: "SYSTEM")
 
-    fun setTheme(theme: AppTheme) = prefs.edit().putString("theme", theme.name).apply()
+    fun setTheme(theme: AppTheme) {
+        prefs.edit().putString("theme", theme.name).apply()
+        _themeFlow.value = theme
+    }
 
     fun getFontSize(): Float = prefs.getFloat("font_size", 16f)
     fun setFontSize(size: Float) = prefs.edit().putFloat("font_size", size).apply()

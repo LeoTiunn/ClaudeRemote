@@ -1,22 +1,18 @@
 package com.claude.remote.features.chat
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Keeps the terminal WebView alive across navigation events.
- * The WebView is created once with application context and reused,
- * so terminal state is preserved when navigating to Settings and back.
+ * WebView must be created with Activity context (not Application) for keyboard to work.
+ * Call getOrCreate(activityContext) the first time.
  */
 @Singleton
-class TerminalWebViewHolder @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
+class TerminalWebViewHolder @Inject constructor() {
     var webView: WebView? = null
         private set
 
@@ -25,8 +21,12 @@ class TerminalWebViewHolder @Inject constructor(
 
     @Volatile var fontSize: Float = 13f
 
-    @SuppressLint("SetJavaScriptEnabled")
-    fun getOrCreate(): WebView {
+    // Mutable callback refs — updated by TerminalView composable,
+    // called by the JS interface on the singleton WebView
+    var onInput: ((String) -> Unit)? = null
+    var onResize: ((cols: Int, rows: Int) -> Unit)? = null
+
+    fun getOrCreate(context: Context): WebView {
         return webView ?: WebView(context).also {
             webView = it
             isInitialized = false
@@ -37,7 +37,6 @@ class TerminalWebViewHolder @Inject constructor(
         isInitialized = true
     }
 
-    /** Detach from current parent so it can be added to a new one */
     fun detachFromParent() {
         (webView?.parent as? ViewGroup)?.removeView(webView)
     }

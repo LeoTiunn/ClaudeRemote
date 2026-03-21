@@ -18,7 +18,6 @@ import com.claude.remote.features.chat.TerminalWebViewHolder
 import com.claude.remote.features.settings.AppTheme
 import com.claude.remote.features.settings.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.MutableStateFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -27,13 +26,11 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var webViewHolder: TerminalWebViewHolder
 
-    private val _themeState = MutableStateFlow(AppTheme.SYSTEM)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val theme by _themeState.collectAsState()
+            val theme by settingsRepository.themeFlow.collectAsState()
             val darkTheme = when (theme) {
                 AppTheme.DARK -> true
                 AppTheme.LIGHT -> false
@@ -55,10 +52,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::settingsRepository.isInitialized) {
-            _themeState.value = settingsRepository.getTheme()
             val fontSize = settingsRepository.getFontSize()
             webViewHolder.fontSize = fontSize
-            // Apply to live WebView if it exists
             webViewHolder.webView?.post {
                 webViewHolder.webView?.evaluateJavascript(
                     "if(window.setFontSize)setFontSize($fontSize)", null

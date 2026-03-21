@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.claude.remote.core.ssh.DebugLog
 import kotlinx.coroutines.flow.Flow
@@ -28,17 +29,17 @@ fun TerminalView(
     webViewHolder: TerminalWebViewHolder,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val handler = remember { Handler(Looper.getMainLooper()) }
     val pageLoaded = remember { MutableStateFlow(webViewHolder.isInitialized) }
 
-    // Mutable callback refs so the singleton WebView always calls the current composable's callbacks
-    val callbacks = remember { TerminalCallbacks() }
-    callbacks.onResize = onResize
-    callbacks.onInput = onInput
+    // Update callbacks on the singleton so the JS interface always uses current ones
+    webViewHolder.onResize = onResize
+    webViewHolder.onInput = onInput
 
     val webView = remember {
         webViewHolder.detachFromParent()
-        val wv = webViewHolder.getOrCreate()
+        val wv = webViewHolder.getOrCreate(context)
 
         if (!webViewHolder.isInitialized) {
             wv.settings.javaScriptEnabled = true
@@ -69,7 +70,6 @@ fun TerminalView(
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     webViewHolder.markInitialized()
                     pageLoaded.value = true
-                    // Apply saved font size
                     val fs = webViewHolder.fontSize
                     view?.evaluateJavascript("if(window.setFontSize)setFontSize($fs)", null)
                     view?.let { sendResizeToJs(it) }
@@ -93,13 +93,13 @@ fun TerminalView(
                 @JavascriptInterface
                 fun onTerminalInput(data: String) {
                     DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
-                    callbacks.onInput?.invoke(data)
+                    webViewHolder.onInput?.invoke(data)
                 }
 
                 @JavascriptInterface
                 fun onTerminalResize(cols: Int, rows: Int) {
                     DebugLog.log("WEBVIEW", "Terminal resized: ${cols}x${rows}")
-                    callbacks.onResize?.invoke(cols, rows)
+                    webViewHolder.onResize?.invoke(cols, rows)
                 }
             }, "AndroidBridge")
 
@@ -114,7 +114,6 @@ fun TerminalView(
             DebugLog.log("WEBVIEW", "Loading terminal.html")
             wv.loadUrl("file:///android_asset/terminal.html")
         } else {
-            // Already initialized — just trigger a resize
             pageLoaded.value = true
             wv.post { sendResizeToJs(wv) }
         }
@@ -150,12 +149,6 @@ fun TerminalView(
         },
         modifier = modifier
     )
-}
-
-/** Mutable callback holder so the singleton WebView always uses current callbacks */
-private class TerminalCallbacks {
-    var onResize: ((cols: Int, rows: Int) -> Unit)? = null
-    var onInput: ((String) -> Unit)? = null
 }
 
 private fun sendResizeToJs(view: WebView) {
