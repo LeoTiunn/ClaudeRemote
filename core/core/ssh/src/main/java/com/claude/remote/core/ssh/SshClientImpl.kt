@@ -249,6 +249,11 @@ class SshClientImpl @Inject constructor() : SshClient {
         }
     }
 
+    override suspend fun reconnect() {
+        if (host.isBlank() || password.isBlank()) throw IllegalStateException("No saved credentials")
+        connect(host, port, username, password)
+    }
+
     override suspend fun disconnect() {
         withContext(Dispatchers.IO) {
             DebugLog.log("SSH", "Disconnecting")

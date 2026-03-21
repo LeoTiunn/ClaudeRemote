@@ -100,7 +100,38 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
-                _uiState.update { it.copy(connectionState = state) }
+                val wasDisconnected = _uiState.value.connectionState != com.claude.remote.core.ui.components.ConnectionState.CONNECTED
+                _uiState.update { it.copy(connectionState = state, isReconnecting = false) }
+                // Auto-reconnect to session after SSH reconnects
+                if (state == com.claude.remote.core.ui.components.ConnectionState.CONNECTED && wasDisconnected) {
+                    val session = sshClient.currentSessionName
+                    if (session.isNotEmpty() && !sshClient.isAttachedToTmux) {
+                        tmuxSessionManager.attachToSession(session, sshClient)
+                        kotlinx.coroutines.delay(500)
+                        sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L redraw
+                    }
+                }
+            }
+        }
+    }
+
+    fun reconnect() {
+        val sessionName = sshClient.currentSessionName
+        if (sessionName.isEmpty()) return
+        _uiState.update { it.copy(isReconnecting = true) }
+        viewModelScope.launch {
+            try {
+                if (sshClient.connectionState.value != com.claude.remote.core.ui.components.ConnectionState.CONNECTED) {
+                    sshClient.reconnect()
+                    // connectionState collector above will auto-attach after connect
+                } else if (!sshClient.isAttachedToTmux) {
+                    tmuxSessionManager.attachToSession(sessionName, sshClient)
+                    _uiState.update { it.copy(isReconnecting = false) }
+                    kotlinx.coroutines.delay(500)
+                    sshClient.sendRawBytes(byteArrayOf(0x0C))
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isReconnecting = false, error = "Reconnect failed: ${e.message}") }
             }
         }
     }
