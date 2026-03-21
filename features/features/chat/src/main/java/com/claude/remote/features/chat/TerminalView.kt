@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import com.claude.remote.core.ssh.DebugLog
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,7 @@ fun TerminalView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val pageLoaded = remember { MutableStateFlow(false) }
 
     val webView = remember {
@@ -46,12 +48,6 @@ fun TerminalView(
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     pageLoaded.value = true
-                }
-
-                override fun onReceivedError(
-                    view: WebView?, errorCode: Int, description: String?, failingUrl: String?
-                ) {
-                    DebugLog.log("WEBVIEW", "ERROR: $errorCode $description url=$failingUrl")
                 }
             }
             webChromeClient = object : WebChromeClient() {
@@ -109,6 +105,18 @@ fun TerminalView(
 
     AndroidView(
         factory = { webView },
-        modifier = modifier
+        modifier = modifier,
+        update = { view ->
+            // Send actual pixel dimensions to JS for manual terminal resize
+            val w = view.width
+            val h = view.height
+            if (w > 0 && h > 0) {
+                val scale = view.resources.displayMetrics.density
+                val cssW = (w / scale).toInt()
+                val cssH = (h / scale).toInt()
+                DebugLog.log("WEBVIEW", "Layout: ${w}x${h}px, CSS: ${cssW}x${cssH}")
+                view.evaluateJavascript("if(window.resizeTo)resizeTo($cssW,$cssH)", null)
+            }
+        }
     )
 }

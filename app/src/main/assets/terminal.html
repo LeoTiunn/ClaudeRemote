@@ -53,19 +53,36 @@ try {
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
+  // Manual resize from Android — bypasses fitAddon which reports wrong dimensions
+  window.resizeTo = function(widthPx, heightPx) {
+    try {
+      // Measure character cell size from xterm's rendered font
+      var core = term._core;
+      var cellW = core._renderService.dimensions.css.cell.width;
+      var cellH = core._renderService.dimensions.css.cell.height;
+      if (cellW > 0 && cellH > 0) {
+        var cols = Math.floor(widthPx / cellW);
+        var rows = Math.floor(heightPx / cellH);
+        if (cols > 10 && rows > 3) {
+          term.resize(cols, rows);
+        }
+      }
+    } catch(e) {
+      // Fallback: estimate with font size
+      var cols = Math.floor(widthPx / 8);
+      var rows = Math.floor(heightPx / 16);
+      if (cols > 10 && rows > 3) {
+        try { term.resize(cols, rows); } catch(e2) {}
+      }
+    }
+  };
+
   function doFit() {
     try { fitAddon.fit(); } catch(e) {}
   }
-
+  // Try fitAddon as well
   doFit();
-  setTimeout(doFit, 100);
-  setTimeout(doFit, 300);
-  setTimeout(doFit, 600);
-  setTimeout(doFit, 1000);
-  setTimeout(doFit, 2000);
-  setTimeout(doFit, 3000);
   window.addEventListener('resize', doFit);
-  new ResizeObserver(doFit).observe(document.getElementById('terminal'));
 
   term.onData(function(data) {
     if (window.AndroidBridge) window.AndroidBridge.onTerminalInput(data);
