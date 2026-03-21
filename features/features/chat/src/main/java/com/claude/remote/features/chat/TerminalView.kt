@@ -2,6 +2,7 @@ package com.claude.remote.features.chat
 
 import android.annotation.SuppressLint
 import android.util.Base64
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -12,7 +13,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import com.claude.remote.core.ssh.DebugLog
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +26,6 @@ fun TerminalView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
     val pageLoaded = remember { MutableStateFlow(false) }
 
     val webView = remember {
@@ -48,6 +47,8 @@ fun TerminalView(
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     pageLoaded.value = true
+                    // Trigger resize after page load
+                    view?.let { sendResizeToJs(it) }
                 }
             }
             webChromeClient = object : WebChromeClient() {
@@ -70,6 +71,11 @@ fun TerminalView(
                     DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
                 }
             }, "AndroidBridge")
+
+            // Send dimensions whenever layout changes
+            addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+                sendResizeToJs(v as WebView)
+            }
 
             DebugLog.log("WEBVIEW", "Loading terminal.html")
             loadUrl("file:///android_asset/terminal.html")
@@ -105,18 +111,20 @@ fun TerminalView(
 
     AndroidView(
         factory = { webView },
-        modifier = modifier,
-        update = { view ->
-            // Send actual pixel dimensions to JS for manual terminal resize
-            val w = view.width
-            val h = view.height
-            if (w > 0 && h > 0) {
-                val scale = view.resources.displayMetrics.density
-                val cssW = (w / scale).toInt()
-                val cssH = (h / scale).toInt()
-                DebugLog.log("WEBVIEW", "Layout: ${w}x${h}px, CSS: ${cssW}x${cssH}")
-                view.evaluateJavascript("if(window.resizeTo)resizeTo($cssW,$cssH)", null)
-            }
-        }
+        modifier = modifier
     )
+}
+
+private fun sendResizeToJs(view: WebView) {
+    val w = view.width
+    val h = view.height
+    if (w > 0 && h > 0) {
+        val scale = view.resources.displayMetrics.density
+        val cssW = (w / scale).toInt()
+        val cssH = (h / scale).toInt()
+        DebugLog.log("WEBVIEW", "Layout change: ${w}x${h}px, CSS: ${cssW}x${cssH}dp")
+        view.post {
+            view.evaluateJavascript("if(window.resizeTo)resizeTo($cssW,$cssH)", null)
+        }
+    }
 }
