@@ -7,50 +7,44 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1C1917; }
-  #terminal { width: 100%; height: 100%; }
-  .xterm { padding: 4px; }
-  #fallback {
-    display: none;
-    width: 100%; height: 100%; overflow: auto;
-    background: #1C1917; color: #EAE1D9;
-    font-family: monospace; font-size: 12px;
-    white-space: pre; padding: 8px;
+  #terminal {
+    position: absolute;
+    top: 28px; left: 0; right: 0; bottom: 0;
+  }
+  .xterm, .xterm-viewport, .xterm-screen {
+    width: 100% !important;
+    height: 100% !important;
   }
   #status {
-    position: fixed; top: 0; left: 0; right: 0;
-    color: #FFFFFF; font-size: 16px; font-family: monospace; font-weight: bold;
-    padding: 8px 12px; background: #FF0000; z-index: 9999;
+    position: absolute; top: 0; left: 0; right: 0; height: 28px;
+    color: #FFFFFF; font-size: 12px; font-family: monospace;
+    padding: 4px 8px; background: #FF0000; z-index: 9999;
+    overflow: hidden;
   }
 </style>
 </head>
 <body>
-<div id="terminal"></div>
-<div id="fallback"></div>
 <div id="status">init...</div>
+<div id="terminal"></div>
 <script>
 var statusEl = document.getElementById('status');
-var fallbackEl = document.getElementById('fallback');
 var terminalEl = document.getElementById('terminal');
-var useXterm = false;
 var term = null;
+var fitAddon = null;
 var writeCount = 0;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
-  if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
 }
 
 window.onerror = function(msg, url, line) {
-  setStatus('JS ERR: ' + msg + ' L' + line);
+  setStatus('ERR: ' + msg + ' L' + line);
 };
 </script>
 <script src="js/xterm.min.js"></script>
 <script src="js/addon-fit.min.js"></script>
 <script>
 try {
-  if (typeof Terminal === 'undefined') throw new Error('Terminal not loaded');
-  if (typeof FitAddon === 'undefined') throw new Error('FitAddon not loaded');
-
   term = new Terminal({
     theme: {
       background: '#1C1917',
@@ -73,12 +67,25 @@ try {
     convertEol: false
   });
 
-  var fitAddon = new FitAddon.FitAddon();
+  fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(terminalEl);
 
-  function doFit() { try { fitAddon.fit(); } catch(e) {} }
+  function doFit() {
+    try {
+      fitAddon.fit();
+      setStatus('cols=' + term.cols + ' rows=' + term.rows + ' w=' + terminalEl.offsetWidth + ' h=' + terminalEl.offsetHeight + ' writes=' + writeCount);
+    } catch(e) {
+      setStatus('fit err: ' + e.message);
+    }
+  }
+
+  // Fit now and repeatedly to catch layout changes
   doFit();
+  setTimeout(doFit, 100);
+  setTimeout(doFit, 500);
+  setTimeout(doFit, 1000);
+  setTimeout(doFit, 2000);
   window.addEventListener('resize', doFit);
   new ResizeObserver(doFit).observe(terminalEl);
 
@@ -86,12 +93,9 @@ try {
     if (window.AndroidBridge) window.AndroidBridge.onTerminalInput(data);
   });
 
-  useXterm = true;
-  setStatus('xterm ready, cols=' + term.cols + ' rows=' + term.rows);
+  if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
 } catch(e) {
-  setStatus('xterm failed: ' + e.message + ', using fallback');
-  terminalEl.style.display = 'none';
-  fallbackEl.style.display = 'block';
+  setStatus('INIT ERR: ' + e.message);
 }
 
 // Decode base64 to proper UTF-8 string
@@ -104,31 +108,28 @@ function b64ToUtf8(b64) {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
-// Called from Android — base64 encoded data
+// Called from Android
 window.writeBase64 = function(b64) {
   try {
     var raw = b64ToUtf8(b64);
     writeCount++;
-    if (useXterm && term) {
-      term.write(raw);
-    } else {
-      fallbackEl.textContent += raw;
-      fallbackEl.scrollTop = fallbackEl.scrollHeight;
+    term.write(raw);
+    // Re-fit on first few writes in case layout wasn't ready
+    if (writeCount <= 3) {
+      setTimeout(function() {
+        try { fitAddon.fit(); } catch(e) {}
+        setStatus('cols=' + term.cols + ' rows=' + term.rows + ' w=' + terminalEl.offsetWidth + ' h=' + terminalEl.offsetHeight + ' writes=' + writeCount);
+      }, 50);
     }
-    if (writeCount <= 5 || writeCount % 50 === 0) {
-      setStatus('writes: ' + writeCount + ', last: ' + raw.length + 'b, xterm=' + useXterm);
+    if (writeCount % 50 === 0) {
+      setStatus('cols=' + term.cols + ' rows=' + term.rows + ' writes=' + writeCount);
     }
   } catch(e) {
-    setStatus('write err #' + writeCount + ': ' + e.message);
+    setStatus('write err: ' + e.message);
   }
 };
 
-window.clearTerminal = function() {
-  if (useXterm && term) term.clear();
-  else fallbackEl.textContent = '';
-};
-
-// Keep status visible for debugging
+window.clearTerminal = function() { if (term) term.clear(); };
 </script>
 </body>
 </html>
