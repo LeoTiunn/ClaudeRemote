@@ -25,11 +25,13 @@ class SessionSwitcherViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
+    @Volatile private var loadingInProgress = false
+
     init {
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
                 _uiState.update { it.copy(connectionState = state, isConnecting = false) }
-                if (state == ConnectionState.CONNECTED) {
+                if (state == ConnectionState.CONNECTED && !loadingInProgress) {
                     loadSessionsAndRepos()
                 }
             }
@@ -39,7 +41,7 @@ class SessionSwitcherViewModel @Inject constructor(
 
     private fun autoConnect() {
         if (sshClient.connectionState.value == ConnectionState.CONNECTED) {
-            loadSessionsAndRepos()
+            // Don't call loadSessionsAndRepos here — the collector above handles it
             return
         }
         if (settingsRepository.hasPassword()) {
@@ -83,6 +85,8 @@ class SessionSwitcherViewModel @Inject constructor(
     }
 
     fun loadSessionsAndRepos() {
+        if (loadingInProgress) return
+        loadingInProgress = true
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -98,6 +102,8 @@ class SessionSwitcherViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
+            } finally {
+                loadingInProgress = false
             }
         }
     }

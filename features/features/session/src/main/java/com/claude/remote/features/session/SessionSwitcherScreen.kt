@@ -166,7 +166,7 @@ fun SessionSwitcherScreen(
                 }
             }
 
-            if (uiState.connectionState == ConnectionState.CONNECTED) {
+            if (uiState.sessions.isNotEmpty() || uiState.repos.isNotEmpty() || uiState.connectionState == ConnectionState.CONNECTED) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()

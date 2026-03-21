@@ -115,10 +115,44 @@ class SshClientImpl @Inject constructor() : SshClient {
                     } catch (e: Exception) {
                         DebugLog.log("SHELL", "Reader exception: ${e.javaClass.simpleName}: ${e.message}")
                     }
-                    if (_connectionState.value == ConnectionState.CONNECTED) {
-                        DebugLog.log("SHELL", "Triggering reconnect")
-                        _connectionState.value = ConnectionState.DISCONNECTED
-                        attemptReconnect()
+                    // Only reconnect if the SSH session itself is dead
+                    val sess = jschSession
+                    if (sess == null || !sess.isConnected) {
+                        if (_connectionState.value == ConnectionState.CONNECTED) {
+                            DebugLog.log("SHELL", "Session dead, triggering reconnect")
+                            _connectionState.value = ConnectionState.DISCONNECTED
+                            attemptReconnect()
+                        }
+                    } else {
+                        DebugLog.log("SHELL", "Shell closed but session alive, reopening shell")
+                        // Reopen the shell channel
+                        try {
+                            val newChannel = sess.openChannel("shell") as ChannelShell
+                            newChannel.setPtyType("xterm-256color", 120, 40, 0, 0)
+                            val newShellIn = newChannel.inputStream
+                            this@SshClientImpl.shellOutputStream = newChannel.outputStream
+                            newChannel.connect(10_000)
+                            this@SshClientImpl.shellChannel = newChannel
+                            DebugLog.log("SHELL", "Shell reopened successfully")
+                            // Restart reader for new channel
+                            scope.launch {
+                                try {
+                                    val buf = ByteArray(4096)
+                                    while (isActive && newChannel.isConnected && !newChannel.isClosed) {
+                                        val l = newShellIn.read(buf)
+                                        if (l == -1) break
+                                        if (l > 0) {
+                                            _outputFlow.emit(String(buf, 0, l, Charsets.UTF_8))
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                                DebugLog.log("SHELL", "Reopened shell reader exited")
+                            }
+                        } catch (e: Exception) {
+                            DebugLog.log("SHELL", "Failed to reopen shell: ${e.message}")
+                            _connectionState.value = ConnectionState.DISCONNECTED
+                            attemptReconnect()
+                        }
                     }
                 }
             } catch (e: Exception) {
