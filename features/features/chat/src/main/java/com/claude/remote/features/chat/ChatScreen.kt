@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -324,14 +325,15 @@ fun TerminalKeysBar(
     onKey: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Best practice order: Esc, modifiers, tab variants, arrows
     val keys = listOf(
-        "⇧Tab" to "\u001b[Z",       // Shift+Tab
-        "Tab" to "\t",                // Tab
-        "Enter" to "\r",             // Enter/Return
-        "C-c" to "\u0003",          // Ctrl+C
-        "C-b" to "\u0002",          // Ctrl+B (tmux prefix)
         "Esc" to "\u001b",           // Escape
-        "↑" to "\u001b[A",           // Arrow up
+        "C-c" to "\u0003",          // Ctrl+C (interrupt)
+        "C-b" to "\u0002",          // Ctrl+B (tmux prefix)
+        "Tab" to "\t",                // Tab (autocomplete)
+        "⇧Tab" to "\u001b[Z",       // Shift+Tab (claude mode switch)
+        "←" to "\u001b[D",           // Arrow left
+        "↑" to "\u001b[A",           // Arrow up (history)
         "↓" to "\u001b[B",           // Arrow down
         "→" to "\u001b[C",           // Arrow right
     )
@@ -347,7 +349,10 @@ fun TerminalKeysBar(
                 shape = RoundedCornerShape(6.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 tonalElevation = 2.dp,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    // focusable(false) prevents stealing focus from xterm.js textarea
+                    .focusable(false)
             ) {
                 Text(
                     text = label,
