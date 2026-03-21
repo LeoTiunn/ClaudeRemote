@@ -6,12 +6,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.claude.remote.features.chat.ChatScreen
 import com.claude.remote.features.session.SessionSwitcherScreen
+import com.claude.remote.features.settings.DebugLogScreen
 import com.claude.remote.features.settings.SettingsScreen
 
 object Routes {
     const val CHAT = "chat"
     const val SESSIONS = "sessions"
     const val SETTINGS = "settings"
+    const val DEBUG_LOG = "debug_log"
 }
 
 @Composable
@@ -23,7 +25,9 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Routes.CHAT) {
                         popUpTo(Routes.SESSIONS)
                     }
-                }
+                },
+                onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                onNavigateToDebugLog = { navController.navigate(Routes.DEBUG_LOG) }
             )
         }
         composable(Routes.CHAT) {
@@ -38,6 +42,9 @@ fun AppNavigation(navController: NavHostController) {
         }
         composable(Routes.SETTINGS) {
             SettingsScreen()
+        }
+        composable(Routes.DEBUG_LOG) {
+            DebugLogScreen()
         }
     }
 }

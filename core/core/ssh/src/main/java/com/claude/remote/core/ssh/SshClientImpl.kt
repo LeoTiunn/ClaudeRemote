@@ -55,13 +55,14 @@ class SshClientImpl @Inject constructor() : SshClient {
             this@SshClientImpl.password = password
 
             _connectionState.value = ConnectionState.CONNECTING
+            DebugLog.log("SSH", "Connecting to $host:$port as $username")
 
             try {
-                // Resolve hostname to IPv4 to avoid IPv6 connection issues
                 val addr = java.net.InetAddress.getAllByName(host)
                     .firstOrNull { it is java.net.Inet4Address }
                     ?: java.net.InetAddress.getByName(host)
                 val resolvedHost = addr.hostAddress ?: host
+                DebugLog.log("SSH", "Resolved to $resolvedHost (IPv4)")
 
                 val jsch = JSch()
                 val session = jsch.getSession(username, resolvedHost, port)
@@ -74,7 +75,9 @@ class SshClientImpl @Inject constructor() : SshClient {
                 session.setServerAliveInterval(15_000)
                 session.setServerAliveCountMax(3)
 
+                DebugLog.log("SSH", "Calling session.connect()...")
                 session.connect(15_000)
+                DebugLog.log("SSH", "Session connected: ${session.isConnected}")
                 this@SshClientImpl.jschSession = session
 
                 val channel = session.openChannel("shell") as ChannelShell
@@ -83,31 +86,43 @@ class SshClientImpl @Inject constructor() : SshClient {
                 val shellIn = channel.inputStream
                 this@SshClientImpl.shellOutputStream = channel.outputStream
 
+                DebugLog.log("SSH", "Opening shell channel...")
                 channel.connect(10_000)
+                DebugLog.log("SSH", "Shell channel connected: ${channel.isConnected}")
                 this@SshClientImpl.shellChannel = channel
 
                 _connectionState.value = ConnectionState.CONNECTED
+                DebugLog.log("SSH", "State -> CONNECTED")
 
                 // Background reader for shell output
                 scope.launch {
+                    DebugLog.log("SHELL", "Reader started")
                     try {
                         val buffer = ByteArray(4096)
                         while (isActive && channel.isConnected && !channel.isClosed) {
                             val len = shellIn.read(buffer)
-                            if (len == -1) break
+                            if (len == -1) {
+                                DebugLog.log("SHELL", "read() returned -1, EOF")
+                                break
+                            }
                             if (len > 0) {
-                                _outputFlow.emit(String(buffer, 0, len, Charsets.UTF_8))
+                                val text = String(buffer, 0, len, Charsets.UTF_8)
+                                DebugLog.log("SHELL", "Read ${len}b: ${text.take(100)}")
+                                _outputFlow.emit(text)
                             }
                         }
-                    } catch (_: Exception) {
-                        // Stream closed
+                        DebugLog.log("SHELL", "Reader loop exited. connected=${channel.isConnected} closed=${channel.isClosed}")
+                    } catch (e: Exception) {
+                        DebugLog.log("SHELL", "Reader exception: ${e.javaClass.simpleName}: ${e.message}")
                     }
                     if (_connectionState.value == ConnectionState.CONNECTED) {
+                        DebugLog.log("SHELL", "Triggering reconnect")
                         _connectionState.value = ConnectionState.DISCONNECTED
                         attemptReconnect()
                     }
                 }
             } catch (e: Exception) {
+                DebugLog.log("SSH", "Connect failed: ${e.javaClass.simpleName}: ${e.message}")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 throw e
             }
@@ -118,19 +133,22 @@ class SshClientImpl @Inject constructor() : SshClient {
         if (host.isBlank()) return
         scope.launch {
             for (attempt in 1..5) {
+                DebugLog.log("SSH", "Reconnect attempt $attempt/5")
                 delay(attempt * 3000L)
                 try {
                     connect(host, port, username, password)
                     return@launch
-                } catch (_: Exception) {
-                    // Retry
+                } catch (e: Exception) {
+                    DebugLog.log("SSH", "Reconnect $attempt failed: ${e.message}")
                 }
             }
+            DebugLog.log("SSH", "All reconnect attempts exhausted")
         }
     }
 
     override suspend fun disconnect() {
         withContext(Dispatchers.IO) {
+            DebugLog.log("SSH", "Disconnecting")
             _connectionState.value = ConnectionState.DISCONNECTED
             shellOutputStream = null
             try { shellChannel?.disconnect() } catch (_: Exception) {}
@@ -141,21 +159,31 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override suspend fun executeCommand(command: String): String = withContext(Dispatchers.IO) {
-        val session = jschSession ?: throw IllegalStateException("Not connected")
+        DebugLog.log("EXEC", "Command: ${command.take(80)}")
+        val session = jschSession
+        if (session == null || !session.isConnected) {
+            DebugLog.log("EXEC", "ERROR: session null=${session == null} connected=${session?.isConnected}")
+            throw IllegalStateException("Not connected (session=${session != null}, connected=${session?.isConnected})")
+        }
+
         val channel = session.openChannel("exec") as ChannelExec
         channel.setCommand(command)
 
         val inputStream = channel.inputStream
         val errStream = channel.errStream
 
+        DebugLog.log("EXEC", "Connecting exec channel...")
         channel.connect(10_000)
+        DebugLog.log("EXEC", "Exec channel connected")
 
         val output = StringBuilder()
+        val errOutput = StringBuilder()
         val buffer = ByteArray(4096)
 
         try {
-            // Standard JSch read pattern: use blocking read + isClosed check
+            var iterations = 0
             while (true) {
+                iterations++
                 while (inputStream.available() > 0) {
                     val len = inputStream.read(buffer)
                     if (len < 0) break
@@ -164,13 +192,23 @@ class SshClientImpl @Inject constructor() : SshClient {
                 while (errStream.available() > 0) {
                     val len = errStream.read(buffer)
                     if (len < 0) break
-                    output.append(String(buffer, 0, len, Charsets.UTF_8))
+                    errOutput.append(String(buffer, 0, len, Charsets.UTF_8))
                 }
                 if (channel.isClosed) {
                     if (inputStream.available() > 0 || errStream.available() > 0) continue
                     break
                 }
+                if (iterations > 600) { // 30 second timeout (600 * 50ms)
+                    DebugLog.log("EXEC", "TIMEOUT after 30s")
+                    break
+                }
                 Thread.sleep(50)
+            }
+            DebugLog.log("EXEC", "Done in $iterations iterations, exit=${channel.exitStatus}")
+            DebugLog.log("EXEC", "stdout(${output.length}): ${output.toString().take(200)}")
+            if (errOutput.isNotEmpty()) {
+                DebugLog.log("EXEC", "stderr(${errOutput.length}): ${errOutput.toString().take(200)}")
+                output.append(errOutput)
             }
         } finally {
             channel.disconnect()
@@ -180,9 +218,11 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override fun sendInput(input: String) {
+        DebugLog.log("INPUT", "Sending: ${input.take(50)}")
         shellOutputStream?.let { stream ->
             stream.write("$input\n".toByteArray(Charsets.UTF_8))
             stream.flush()
-        }
+            DebugLog.log("INPUT", "Sent OK")
+        } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
     }
 }

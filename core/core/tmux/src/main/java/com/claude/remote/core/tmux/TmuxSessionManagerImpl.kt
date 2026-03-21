@@ -1,5 +1,6 @@
 package com.claude.remote.core.tmux
 
+import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -10,7 +11,9 @@ import javax.inject.Singleton
 class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
 
     override suspend fun listSessions(client: SshClient): List<TmuxSession> {
+        DebugLog.log("TMUX", "listSessions: calling executeCommand")
         val output = client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux list-sessions -F '#{session_name}|#{pane_current_path}' 2>/dev/null || true")
+        DebugLog.log("TMUX", "listSessions result(${output.length}): ${output.take(200)}")
         if (output.isBlank()) return emptyList()
 
         return output.lines().mapNotNull { line ->
@@ -25,7 +28,9 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
     }
 
     override suspend fun listRemoteRepos(client: SshClient): List<String> {
+        DebugLog.log("TMUX", "listRemoteRepos: calling executeCommand")
         val output = client.executeCommand("find ~/Developer -maxdepth 3 -type d -name .git 2>/dev/null | sed 's|/\\.git\$||' | sed 's|.*/Developer/||' | sort")
+        DebugLog.log("TMUX", "listRemoteRepos result(${output.length}): ${output.take(200)}")
         if (output.isBlank()) return emptyList()
         return output.lines().filter { it.isNotBlank() }
     }
