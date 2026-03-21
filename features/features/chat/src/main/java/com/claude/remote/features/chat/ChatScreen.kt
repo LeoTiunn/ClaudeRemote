@@ -192,7 +192,7 @@ fun ChatScreen(
                 onTextChange = viewModel::onInputChanged,
                 onSend = viewModel::sendMessage,
                 onStop = viewModel::stopStreaming,
-                isStreaming = uiState.isStreaming,
+                isStreaming = uiState.isStreaming && !uiState.isTerminalMode,
                 isVoiceListening = uiState.isVoiceListening,
                 voicePartialResult = uiState.voicePartialResult,
                 onVoiceToggle = viewModel::toggleVoiceInput,
