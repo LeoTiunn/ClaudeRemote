@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface SshClient {
     val connectionState: StateFlow<ConnectionState>
     val outputStream: Flow<String>
+    var isAttachedToTmux: Boolean
 
     suspend fun connect(host: String, port: Int, username: String, password: String)
     suspend fun disconnect()

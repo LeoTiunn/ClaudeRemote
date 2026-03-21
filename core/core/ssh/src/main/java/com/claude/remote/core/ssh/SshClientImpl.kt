@@ -44,6 +44,7 @@ class SshClientImpl @Inject constructor() : SshClient {
     @Volatile private var port: Int = 22
     @Volatile private var username: String = ""
     @Volatile private var password: String = ""
+    @Volatile var isAttachedToTmux: Boolean = false
 
     // For shell-based command execution
     private val execMutex = Mutex()
@@ -80,6 +81,7 @@ class SshClientImpl @Inject constructor() : SshClient {
             jschSession = null
             pendingCommand?.deferred?.complete("")
             pendingCommand = null
+            isAttachedToTmux = false
 
             _connectionState.value = ConnectionState.CONNECTING
             DebugLog.log("SSH", "Connecting to $host:$port as $username")
@@ -255,6 +257,11 @@ class SshClientImpl @Inject constructor() : SshClient {
 
     override suspend fun executeCommand(command: String): String {
         DebugLog.log("EXEC", "Command: ${command.take(80)}")
+
+        if (isAttachedToTmux) {
+            DebugLog.log("EXEC", "Skipping — attached to tmux")
+            return ""
+        }
 
         if (shellOutputStream == null) {
             throw IllegalStateException("Not connected (no shell)")

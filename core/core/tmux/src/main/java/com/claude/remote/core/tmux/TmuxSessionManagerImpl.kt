@@ -44,6 +44,7 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
     }
 
     override suspend fun attachToSession(sessionName: String, client: SshClient) {
+        client.isAttachedToTmux = true
         client.sendInput("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux attach -t '$sessionName'")
     }
 
