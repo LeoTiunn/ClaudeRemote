@@ -76,6 +76,14 @@ fun SessionSwitcherScreen(
         }
     }
 
+    // Navigate after attach completes (avoids race condition)
+    LaunchedEffect(uiState.navigateToSession) {
+        uiState.navigateToSession?.let { sessionName ->
+            viewModel.onNavigated()
+            onSessionSelected(sessionName)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -210,7 +218,6 @@ fun SessionSwitcherScreen(
                                     .fillMaxWidth()
                                     .clickable {
                                         viewModel.attachSession(session.name)
-                                        onSessionSelected(session.name)
                                     },
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                                 colors = CardDefaults.cardColors(
@@ -267,8 +274,7 @@ fun SessionSwitcherScreen(
                         items(uiState.repos, key = { "repo-$it" }) { repo ->
                             RepoCard(repo = repo) {
                                 searchQuery = ""
-                                val session = viewModel.createSessionFromRepo(repo)
-                                onSessionSelected(session.name)
+                                viewModel.createSessionFromRepo(repo)
                             }
                         }
                     } else if (uiState.repoHistory.isNotEmpty()) {
@@ -283,8 +289,7 @@ fun SessionSwitcherScreen(
                         }
                         items(uiState.repoHistory, key = { "history-$it" }) { repo ->
                             RepoCard(repo = repo) {
-                                val session = viewModel.createSessionFromRepo(repo)
-                                onSessionSelected(session.name)
+                                viewModel.createSessionFromRepo(repo)
                             }
                         }
                     }

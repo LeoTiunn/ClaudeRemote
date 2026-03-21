@@ -161,13 +161,18 @@ class SessionSwitcherViewModel @Inject constructor(
             try {
                 ensureDetachedFromTmux()
                 tmuxSessionManager.attachToSession(sessionName, sshClient)
+                _uiState.update { it.copy(navigateToSession = sessionName) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }
         }
     }
 
-    fun createSessionFromRepo(repo: String): TmuxSession {
+    fun onNavigated() {
+        _uiState.update { it.copy(navigateToSession = null) }
+    }
+
+    fun createSessionFromRepo(repo: String) {
         val sessionName = repo.substringAfterLast("/")
         val workDir = "\$HOME/Developer/$repo"
         settingsRepository.addRepoToHistory(repo)
@@ -178,11 +183,11 @@ class SessionSwitcherViewModel @Inject constructor(
                 tmuxSessionManager.createSession(sessionName, workDir, sshClient)
                 kotlinx.coroutines.delay(500)
                 tmuxSessionManager.attachToSession(sessionName, sshClient)
+                _uiState.update { it.copy(navigateToSession = sessionName) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             }
         }
-        return TmuxSession(name = sessionName, windowName = sessionName)
     }
 
     fun killSession(sessionName: String) {

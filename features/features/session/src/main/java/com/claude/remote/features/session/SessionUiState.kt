@@ -12,5 +12,6 @@ data class SessionUiState(
     val isConnecting: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val error: String? = null,
-    val showPasswordPrompt: Boolean = false
+    val showPasswordPrompt: Boolean = false,
+    val navigateToSession: String? = null
 )
