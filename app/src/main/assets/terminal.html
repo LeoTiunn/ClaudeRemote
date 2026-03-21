@@ -19,12 +19,19 @@
   .xterm-rows span {
     font-variant-emoji: text !important;
   }
-  /* Native browser scroll — smooth compositor-layer scrolling */
+  /* Let touch events pass through canvas to viewport for native scroll */
+  .xterm-screen {
+    pointer-events: none !important;
+  }
+  .xterm-screen canvas {
+    pointer-events: none !important;
+  }
+  /* Keep textarea interactive for keyboard input */
+  .xterm-helper-textarea {
+    pointer-events: auto !important;
+  }
   .xterm-viewport {
     -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
-  }
-  .xterm-screen {
     touch-action: pan-y !important;
   }
 </style>
