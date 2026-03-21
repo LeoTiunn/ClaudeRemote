@@ -26,6 +26,24 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Cache debug keystore
+        id: cache-keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore-v1
+
+      - name: Create debug keystore
+        if: steps.cache-keystore.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 36500 \
+            -storepass android -keypass android \
+            -dname "CN=ClaudeRemote,O=LeoTiunn,L=Unknown,ST=Unknown,C=US"
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
