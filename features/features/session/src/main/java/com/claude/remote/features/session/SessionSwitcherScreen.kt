@@ -133,16 +133,23 @@ fun SessionSwitcherScreen(
             }
 
             uiState.error?.let { errorMessage ->
-                if (uiState.connectionState == ConnectionState.CONNECTED) {
-                    Snackbar(
-                        modifier = Modifier.padding(16.dp),
-                        action = {
-                            TextButton(onClick = { viewModel.clearError() }) {
-                                Text("Dismiss")
-                            }
-                        }
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(errorMessage)
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.clearError() }) {
+                            Text("Dismiss")
+                        }
                     }
                 }
             }
@@ -262,13 +269,17 @@ fun SessionSwitcherScreen(
 
                     if (uiState.sessions.isEmpty() && uiState.repos.isEmpty() && !uiState.isLoading) {
                         item {
-                            Box(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(32.dp),
-                                contentAlignment = Alignment.Center
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Text("No sessions or repos found")
+                                Button(onClick = { viewModel.loadSessionsAndRepos() }) {
+                                    Text("Retry")
+                                }
                             }
                         }
                     }

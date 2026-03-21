@@ -82,9 +82,9 @@ class SessionSwitcherViewModel @Inject constructor(
         _uiState.update { it.copy(showPasswordPrompt = false) }
     }
 
-    private fun loadSessionsAndRepos() {
+    fun loadSessionsAndRepos() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val sessions = tmuxSessionManager.listSessions(sshClient)
                 val repos = tmuxSessionManager.listRemoteRepos(sshClient)
@@ -92,7 +92,12 @@ class SessionSwitcherViewModel @Inject constructor(
                     it.copy(sessions = sessions, repos = repos, isLoading = false, error = null)
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message, isLoading = false) }
+                _uiState.update {
+                    it.copy(
+                        error = "Load failed: ${e.javaClass.simpleName}: ${e.message}",
+                        isLoading = false
+                    )
+                }
             }
         }
     }
