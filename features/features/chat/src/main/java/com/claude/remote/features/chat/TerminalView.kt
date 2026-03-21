@@ -1,9 +1,7 @@
 package com.claude.remote.features.chat
 
 import android.annotation.SuppressLint
-import android.net.http.SslError
 import android.webkit.JavascriptInterface
-import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -15,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -23,24 +23,26 @@ fun TerminalView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val pageLoaded = remember { MutableStateFlow(false) }
+
     val webView = remember {
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
+            @Suppress("DEPRECATION")
+            settings.allowFileAccessFromFileURLs = true
             settings.loadWithOverviewMode = true
             settings.useWideViewPort = true
-            // Prevent zoom
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
 
             setBackgroundColor(android.graphics.Color.parseColor("#1C1917"))
 
             webViewClient = object : WebViewClient() {
-                override fun onReceivedSslError(
-                    view: WebView?, handler: SslErrorHandler?, error: SslError?
-                ) {
-                    handler?.proceed()
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    pageLoaded.value = true
                 }
             }
             webChromeClient = WebChromeClient()
@@ -48,7 +50,7 @@ fun TerminalView(
             addJavascriptInterface(object {
                 @JavascriptInterface
                 fun onTerminalReady() {
-                    // Terminal is ready to receive data
+                    // Terminal is ready
                 }
 
                 @JavascriptInterface
@@ -61,10 +63,12 @@ fun TerminalView(
         }
     }
 
-    // Collect output and push to WebView
+    // Wait for page to load, then collect output and push to WebView
     LaunchedEffect(webView) {
+        // Wait until the page has finished loading
+        pageLoaded.first { it }
+
         outputFlow.collect { chunk ->
-            // Escape for JavaScript string — handle special chars
             val escaped = chunk
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")

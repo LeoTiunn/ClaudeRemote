@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<link rel="stylesheet" href="file:///android_asset/js/xterm.min.css">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1C1917; }
@@ -13,11 +13,14 @@
 </head>
 <body>
 <div id="terminal"></div>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
+<script src="file:///android_asset/js/xterm.min.js"></script>
+<script src="file:///android_asset/js/addon-fit.min.js"></script>
+<script src="file:///android_asset/js/addon-web-links.min.js"></script>
 <script>
-const term = new Terminal({
+var dataQueue = [];
+var isReady = false;
+
+var term = new Terminal({
   theme: {
     background: '#1C1917',
     foreground: '#EAE1D9',
@@ -51,47 +54,53 @@ const term = new Terminal({
   convertEol: false
 });
 
-const fitAddon = new FitAddon.FitAddon();
+var fitAddon = new FitAddon.FitAddon();
 term.loadAddon(fitAddon);
 
-const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+var webLinksAddon = new WebLinksAddon.WebLinksAddon();
 term.loadAddon(webLinksAddon);
 
 term.open(document.getElementById('terminal'));
 
-// Fit to container
 function doFit() {
   try { fitAddon.fit(); } catch(e) {}
 }
 doFit();
 window.addEventListener('resize', doFit);
-
-// Observe container size changes
 new ResizeObserver(doFit).observe(document.getElementById('terminal'));
+
+// Mark ready and flush queued data
+isReady = true;
+for (var i = 0; i < dataQueue.length; i++) {
+  term.write(dataQueue[i]);
+}
+dataQueue = [];
 
 // Called from Android to write terminal data
 function writeData(data) {
-  term.write(data);
+  if (isReady) {
+    term.write(data);
+  } else {
+    dataQueue.push(data);
+  }
 }
 
-// Called from Android to clear terminal
 function clearTerminal() {
   term.clear();
 }
 
-// Called from Android to get terminal dimensions
 function getSize() {
   return JSON.stringify({ cols: term.cols, rows: term.rows });
 }
 
-// Notify Android when user types (for future use)
+// Forward user typing to Android
 term.onData(function(data) {
   if (window.AndroidBridge) {
     window.AndroidBridge.onTerminalInput(data);
   }
 });
 
-// Signal ready
+// Signal ready to Android
 if (window.AndroidBridge) {
   window.AndroidBridge.onTerminalReady();
 }
