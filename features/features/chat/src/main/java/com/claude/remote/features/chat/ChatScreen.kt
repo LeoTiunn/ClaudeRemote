@@ -30,14 +30,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -48,8 +43,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -61,17 +54,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -157,6 +147,7 @@ fun ChatScreen(
                 TerminalView(
                     outputFlow = viewModel.terminalOutput,
                     onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                    onInput = { data -> viewModel.sendRawEscape(data) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -188,22 +179,8 @@ fun ChatScreen(
                 thickness = 0.5.dp
             )
 
-            if (uiState.isTerminalMode) {
-                TerminalKeysBar(
-                    onKey = { seq -> viewModel.sendRawEscape(seq) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            ChatInputBar(
-                text = uiState.inputText,
-                onTextChange = viewModel::onInputChanged,
-                onSend = viewModel::sendMessage,
-                onStop = viewModel::stopStreaming,
-                isStreaming = uiState.isStreaming && !uiState.isTerminalMode,
-                isVoiceListening = uiState.isVoiceListening,
-                voicePartialResult = uiState.voicePartialResult,
-                onVoiceToggle = viewModel::toggleVoiceInput,
+            TerminalKeysBar(
+                onKey = { seq -> viewModel.sendRawEscape(seq) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
@@ -340,145 +317,6 @@ fun StreamingIndicator(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
-@Composable
-fun ChatInputBar(
-    text: String,
-    onTextChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onStop: () -> Unit = {},
-    isStreaming: Boolean = false,
-    isVoiceListening: Boolean = false,
-    voicePartialResult: String = "",
-    onVoiceToggle: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val sendAndHideKeyboard = {
-        onSend()
-        keyboardController?.hide()
-    }
-    Column(modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-        if (isVoiceListening) {
-            Text(
-                text = voicePartialResult.ifEmpty { "Listening..." },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
-
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Mic button
-                IconButton(
-                    onClick = onVoiceToggle,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Mic,
-                        contentDescription = if (isVoiceListening) "Stop listening" else "Voice input",
-                        modifier = Modifier.size(20.dp),
-                        tint = if (isVoiceListening)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Text field — transparent, no borders
-                TextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            "Reply to Claude…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            fontSize = 15.sp
-                        )
-                    },
-                    textStyle = TextStyle(
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    ),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendAndHideKeyboard() }),
-                    maxLines = 4,
-                    singleLine = false
-                )
-
-                // Send / Stop button
-                if (isStreaming) {
-                    IconButton(
-                        onClick = onStop,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.error),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Stop",
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.White
-                            )
-                        }
-                    }
-                } else {
-                    IconButton(
-                        onClick = { sendAndHideKeyboard() },
-                        enabled = text.isNotBlank(),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (text.isNotBlank())
-                                        MaterialTheme.colorScheme.primary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send",
-                                modifier = Modifier.size(16.dp),
-                                tint = if (text.isNotBlank())
-                                    MaterialTheme.colorScheme.onPrimary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun TerminalKeysBar(
@@ -519,7 +357,7 @@ fun TerminalKeysBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }

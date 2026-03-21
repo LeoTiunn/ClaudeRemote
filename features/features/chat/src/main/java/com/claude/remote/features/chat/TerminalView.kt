@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 fun TerminalView(
     outputFlow: Flow<String>,
     onResize: ((cols: Int, rows: Int) -> Unit)? = null,
+    onInput: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -86,6 +87,7 @@ fun TerminalView(
                 @JavascriptInterface
                 fun onTerminalInput(data: String) {
                     DebugLog.log("WEBVIEW", "Terminal input: ${data.take(50)}")
+                    onInput?.invoke(data)
                 }
 
                 @JavascriptInterface
