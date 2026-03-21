@@ -166,7 +166,22 @@ fun SessionSwitcherScreen(
                 }
             }
 
-            if (uiState.sessions.isNotEmpty() || uiState.repos.isNotEmpty() || uiState.connectionState == ConnectionState.CONNECTED) {
+            if (uiState.connectionState == ConnectionState.CONNECTED || uiState.sessions.isNotEmpty() || uiState.repos.isNotEmpty()) {
+                // Repo search field
+                var searchQuery by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                        viewModel.searchRepos(it)
+                    },
+                    label = { Text("Search repos...") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -233,11 +248,11 @@ fun SessionSwitcherScreen(
                         item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
 
-                    // Repos section
+                    // Search results section
                     if (uiState.repos.isNotEmpty()) {
                         item {
                             Text(
-                                "Developer Repos",
+                                "Repos",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 4.dp)
@@ -279,7 +294,7 @@ fun SessionSwitcherScreen(
                         }
                     }
 
-                    if (uiState.sessions.isEmpty() && uiState.repos.isEmpty() && !uiState.isLoading) {
+                    if (uiState.sessions.isEmpty() && uiState.repos.isEmpty() && !uiState.isLoading && searchQuery.isEmpty()) {
                         item {
                             Column(
                                 modifier = Modifier
@@ -288,9 +303,14 @@ fun SessionSwitcherScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("No sessions or repos found")
+                                Text("No active sessions")
+                                Text(
+                                    "Search for a repo above to start a new session",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                                 Button(onClick = { viewModel.loadSessionsAndRepos() }) {
-                                    Text("Retry")
+                                    Text("Refresh")
                                 }
                             }
                         }

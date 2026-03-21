@@ -91,9 +91,8 @@ class SessionSwitcherViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val sessions = tmuxSessionManager.listSessions(sshClient)
-                val repos = tmuxSessionManager.listRemoteRepos(sshClient)
                 _uiState.update {
-                    it.copy(sessions = sessions, repos = repos, isLoading = false, error = null)
+                    it.copy(sessions = sessions, isLoading = false, error = null)
                 }
             } catch (e: Exception) {
                 _uiState.update {
@@ -104,6 +103,24 @@ class SessionSwitcherViewModel @Inject constructor(
                 }
             } finally {
                 loadingInProgress = false
+            }
+        }
+    }
+
+    fun searchRepos(query: String) {
+        if (query.length < 2) {
+            _uiState.update { it.copy(repos = emptyList()) }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val output = sshClient.executeCommand(
+                    "find ~/Developer -maxdepth 3 -type d -name .git 2>/dev/null | sed 's|/\\.git\$||' | sed 's|.*/Developer/||' | grep -i '${query.replace("'", "\\'")}' | sort | head -20"
+                )
+                val repos = output.lines().filter { it.isNotBlank() }
+                _uiState.update { it.copy(repos = repos) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Search failed: ${e.message}") }
             }
         }
     }

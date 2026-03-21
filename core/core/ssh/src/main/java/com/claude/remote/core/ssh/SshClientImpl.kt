@@ -175,36 +175,41 @@ class SshClientImpl @Inject constructor() : SshClient {
             val content = pending.outputBuffer.toString()
 
             if (!pending.capturing) {
-                // Look for the start marker on its own line (after a newline).
-                // The echo has it embedded: echo 'START_CMD_xxx'; command...
-                // The real output has it on its own line: \nSTART_CMD_xxx\n
-                val pattern = "\n$startMarker\n"
-                val idx = content.indexOf(pattern)
-                if (idx >= 0) {
+                // Find the real start marker (not from echo).
+                // Echo: echo 'START_CMD_xxx' — marker preceded by single quote
+                // Real: ...PreExecSTART_CMD_xxx\n — marker NOT preceded by quote
+                var searchFrom = 0
+                while (true) {
+                    val idx = content.indexOf(startMarker, searchFrom)
+                    if (idx < 0) break
+                    if (idx > 0 && content[idx - 1] == '\'') {
+                        // This is from echo (echo 'START_CMD_xxx'), skip it
+                        searchFrom = idx + startMarker.length
+                        continue
+                    }
+                    // Real start marker found
                     pending.capturing = true
-                    val afterStart = content.substring(idx + pattern.length)
+                    val afterStart = content.substring(idx + startMarker.length).trimStart('\n')
                     pending.outputBuffer.clear()
                     pending.outputBuffer.append(afterStart)
-                    DebugLog.log("EXEC", "Found real START marker (on own line)")
+                    DebugLog.log("EXEC", "Found real START marker")
+                    break
                 }
             }
 
             if (pending.capturing) {
                 val currentContent = pending.outputBuffer.toString()
-                // End marker is also on its own line
-                val endPattern = "\n$endMarker\n"
-                val endIdx = currentContent.indexOf(endPattern)
-                if (endIdx >= 0) {
-                    val result = currentContent.substring(0, endIdx).trim()
-                    DebugLog.log("EXEC", "Captured result(${result.length}): ${result.take(200)}")
-                    pending.deferred.complete(result)
-                    return
-                }
-                // Also check if end marker is at the very end with just a newline before it
-                val endPattern2 = "\n$endMarker"
-                val endIdx2 = currentContent.indexOf(endPattern2)
-                if (endIdx2 >= 0 && currentContent.endsWith(endMarker)) {
-                    val result = currentContent.substring(0, endIdx2).trim()
+                // Find end marker NOT preceded by quote
+                var searchFrom = 0
+                while (true) {
+                    val idx = currentContent.indexOf(endMarker, searchFrom)
+                    if (idx < 0) break
+                    if (idx > 0 && currentContent[idx - 1] == '\'') {
+                        searchFrom = idx + endMarker.length
+                        continue
+                    }
+                    // Real end marker found
+                    val result = stripAnsi(currentContent.substring(0, idx).trim())
                     DebugLog.log("EXEC", "Captured result(${result.length}): ${result.take(200)}")
                     pending.deferred.complete(result)
                     return
