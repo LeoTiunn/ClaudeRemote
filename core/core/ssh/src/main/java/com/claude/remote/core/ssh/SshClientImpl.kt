@@ -313,12 +313,14 @@ class SshClientImpl @Inject constructor() : SshClient {
             .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
     }
 
-    override fun sendInput(input: String) {
+    override suspend fun sendInput(input: String) {
         DebugLog.log("INPUT", "Sending: ${input.take(50)}")
-        shellOutputStream?.let { stream ->
-            stream.write("$input\n".toByteArray(Charsets.UTF_8))
-            stream.flush()
-            DebugLog.log("INPUT", "Sent OK")
-        } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
+        withContext(Dispatchers.IO) {
+            shellOutputStream?.let { stream ->
+                stream.write("$input\n".toByteArray(Charsets.UTF_8))
+                stream.flush()
+                DebugLog.log("INPUT", "Sent OK")
+            } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
+        }
     }
 }

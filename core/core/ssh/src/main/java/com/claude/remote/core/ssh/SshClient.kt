@@ -12,5 +12,5 @@ interface SshClient {
     suspend fun connect(host: String, port: Int, username: String, password: String)
     suspend fun disconnect()
     suspend fun executeCommand(command: String): String
-    fun sendInput(input: String)
+    suspend fun sendInput(input: String)
 }
