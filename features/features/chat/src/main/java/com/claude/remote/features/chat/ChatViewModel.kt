@@ -1,6 +1,7 @@
 package com.claude.remote.features.chat
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.SshClient
@@ -21,7 +22,8 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
     private val tmuxSessionManager: TmuxSessionManager,
-    val webViewHolder: TerminalWebViewHolder
+    val webViewHolder: TerminalWebViewHolder,
+    private val fileUploadManager: FileUploadManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -237,6 +239,46 @@ class ChatViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(error = e.message, isStreaming = false)
                     }
+                }
+            }
+        }
+    }
+
+    fun uploadAndAttachFile(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isUploading = true, uploadFileName = "uploading...") }
+
+                // Need to detach from tmux to run executeCommand for upload
+                val wasAttached = sshClient.isAttachedToTmux
+                if (wasAttached) {
+                    sshClient.sendRawBytes(byteArrayOf(0x02)) // Ctrl+B
+                    kotlinx.coroutines.delay(150)
+                    sshClient.sendRawBytes("d".toByteArray())
+                    sshClient.isAttachedToTmux = false
+                    kotlinx.coroutines.delay(800)
+                }
+
+                val attachment = fileUploadManager.uploadFile(uri, sshClient)
+                _uiState.update { it.copy(isUploading = false, uploadFileName = null) }
+
+                // Re-attach to tmux
+                if (wasAttached) {
+                    val sessionName = sshClient.currentSessionName
+                    sshClient.isAttachedToTmux = true
+                    sshClient.sendInput("tmux attach -t '$sessionName'")
+                    kotlinx.coroutines.delay(500)
+                    // Type the remote path into the terminal
+                    sshClient.sendRawBytes(attachment.remotePath!!.toByteArray(Charsets.UTF_8))
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isUploading = false, uploadFileName = null, error = "Upload failed: ${e.message}")
+                }
+                // Re-attach if detached
+                if (!sshClient.isAttachedToTmux && sshClient.currentSessionName.isNotEmpty()) {
+                    sshClient.isAttachedToTmux = true
+                    sshClient.sendInput("tmux attach -t '${sshClient.currentSessionName}'")
                 }
             }
         }

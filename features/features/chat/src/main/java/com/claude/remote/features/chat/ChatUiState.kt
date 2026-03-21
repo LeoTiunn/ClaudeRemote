@@ -10,6 +10,8 @@ data class ChatUiState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val isTerminalMode: Boolean = false,
     val sessionName: String = "",
+    val isUploading: Boolean = false,
+    val uploadFileName: String? = null,
     val error: String? = null,
     val isVoiceListening: Boolean = false,
     val voicePartialResult: String = "",
