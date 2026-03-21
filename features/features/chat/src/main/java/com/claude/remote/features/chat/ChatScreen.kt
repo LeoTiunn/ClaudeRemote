@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -228,7 +230,7 @@ fun ChatMessageItem(
             }
         }
     } else {
-        // Assistant message — no bubble, flows on background like Claude iOS
+        // Assistant message — terminal output, monospace, horizontally scrollable
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -245,13 +247,16 @@ fun ChatMessageItem(
             Text(
                 text = message.content,
                 style = TextStyle(
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp,
-                    letterSpacing = 0.3.sp,
-                    fontFamily = FontFamily.Default
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    letterSpacing = 0.sp,
+                    fontFamily = FontFamily.Monospace
                 ),
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.fillMaxWidth()
+                softWrap = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
             )
 
             // Action row — always visible, like Claude iOS
