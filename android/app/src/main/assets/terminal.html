@@ -76,31 +76,6 @@ try {
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
-  // Fix Android IME: configure xterm's hidden textarea so Android keyboard connects to it
-  (function() {
-    var ta = document.querySelector('.xterm-helper-textarea');
-    if (ta) {
-      ta.setAttribute('inputmode', 'text');
-      ta.setAttribute('autocapitalize', 'off');
-      ta.setAttribute('autocomplete', 'off');
-      ta.setAttribute('autocorrect', 'off');
-      ta.setAttribute('spellcheck', 'false');
-      // Android IME ignores fully hidden elements — make it minimally visible
-      ta.style.opacity = '0.01';
-      ta.style.width = '1px';
-      ta.style.height = '1px';
-      ta.style.position = 'absolute';
-      ta.style.left = '0';
-      ta.style.top = '0';
-      ta.style.zIndex = '10';
-    }
-    // Tap anywhere on terminal → focus the textarea
-    document.getElementById('terminal').addEventListener('touchend', function() {
-      if (ta) ta.focus({ preventScroll: true });
-      term.focus();
-    });
-  })();
-
   function notifySize(cols, rows) {
     if (cols !== lastCols || rows !== lastRows) {
       lastCols = cols;
@@ -243,7 +218,6 @@ window.writeBase64 = function(b64) {
 };
 
 window.clearTerminal = function() { if (term) term.clear(); };
-
 
 window.setFontSize = function(size) {
   if (term && size > 0) {
