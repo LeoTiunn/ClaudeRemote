@@ -356,14 +356,8 @@ class ChatViewModel @Inject constructor(
     fun refocusTerminal() {
         val wv = webViewHolder.webView ?: return
         wv.post {
-            // 1. Request Android-level focus on the WebView
             wv.requestFocus()
-            // 2. Refocus xterm.js textarea inside the WebView
             wv.evaluateJavascript("if(term)term.focus()", null)
-            // 3. Re-show soft keyboard targeting the WebView
-            val imm = wv.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-                as android.view.inputmethod.InputMethodManager
-            imm.showSoftInput(wv, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
     }
 
