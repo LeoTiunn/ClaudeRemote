@@ -29,3 +29,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Disney Dev MCP debug logs and metadata
+.disney_dev_mcp/
+
+# ChromaDB vector storage
+.chroma/

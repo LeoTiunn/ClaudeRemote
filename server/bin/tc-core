@@ -1,0 +1,124 @@
+#!/bin/zsh
+# tc-core - shared tmux+claude session logic
+# Usage: tc-core <claude-command...> -- <project>
+#   or:  tc-core <claude-command...>          (no project = list sessions)
+
+set -e
+
+DEV_ROOT="$HOME/Developer"
+
+# Parse: everything before "--" is the claude command, after is the project
+CLAUDE_CMD=()
+PROJECT=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--" ]]; then
+    shift
+    PROJECT="$1"
+    break
+  fi
+  CLAUDE_CMD+=("$1")
+  shift
+done
+
+# --- No project: list sessions or show usage ---
+show_sessions() {
+  SESSIONS=("${(@f)$(tmux list-sessions -F '#{session_name}' 2>/dev/null)}")
+  SESSIONS=(${SESSIONS[@]:#})
+  [[ ${#SESSIONS[@]} -eq 0 ]] && return 1
+  echo "Active sessions:"
+  for i in {1..${#SESSIONS[@]}}; do
+    echo "  $i) ${SESSIONS[$i]}"
+  done
+  echo ""
+  read "pick?Attach to session (number), or enter project name: "
+  if [[ "$pick" -gt 0 ]] 2>/dev/null && [[ "$pick" -le ${#SESSIONS[@]} ]]; then
+    exec tmux attach -t "${SESSIONS[$pick]}"
+  elif [[ -n "$pick" ]]; then
+    PROJECT="$pick"
+    return 1
+  else
+    exit 0
+  fi
+}
+
+if [[ -z "$PROJECT" ]]; then
+  show_sessions || {
+    if [[ -z "$PROJECT" ]]; then
+      echo "No active sessions."
+      echo "Usage: <command> <project-name>"
+      exit 1
+    fi
+  }
+fi
+
+# --- Exact tmux session match ---
+if tmux has-session -t "=$PROJECT" 2>/dev/null; then
+  echo "Session '$PROJECT' exists. Attaching..."
+  exec tmux attach -t "=$PROJECT"
+fi
+
+# --- Find project directory (exact match) ---
+DIR=$(find "$DEV_ROOT" -maxdepth 2 -mindepth 2 -type d -name "$PROJECT" 2>/dev/null | head -1)
+
+# --- No exact dir: show sessions + fuzzy matches ---
+if [[ -z "$DIR" ]]; then
+  N=0
+
+  # All active tmux sessions
+  SESSIONS=("${(@f)$(tmux list-sessions -F '#{session_name}' 2>/dev/null)}")
+  SESSIONS=(${SESSIONS[@]:#})
+  if [[ ${#SESSIONS[@]} -gt 0 ]]; then
+    echo "Active sessions:"
+    for i in {1..${#SESSIONS[@]}}; do
+      echo "  $i) ${SESSIONS[$i]}"
+    done
+    N=${#SESSIONS[@]}
+  fi
+
+  # Fuzzy project matches
+  MATCHES=("${(@f)$(find "$DEV_ROOT" -maxdepth 2 -mindepth 2 -type d -iname "*${PROJECT}*" 2>/dev/null | grep -v '/\.' | head -20)}")
+  MATCHES=(${MATCHES[@]:#})
+  if [[ ${#MATCHES[@]} -ge 1 ]]; then
+    echo ""
+    echo "No exact match for '$PROJECT'. Found:"
+    for i in {1..${#MATCHES[@]}}; do
+      echo "  $((N + i))) ${MATCHES[$i]#$DEV_ROOT/}"
+    done
+  fi
+
+  TOTAL=$((N + ${#MATCHES[@]}))
+  if [[ $TOTAL -gt 0 ]]; then
+    echo ""
+    read "pick?Pick a number (or 0 to clone): "
+    if [[ "$pick" -gt 0 ]] 2>/dev/null && [[ "$pick" -le $TOTAL ]]; then
+      if [[ "$pick" -le $N ]]; then
+        exec tmux attach -t "${SESSIONS[$pick]}"
+      else
+        DIR="${MATCHES[$((pick - N))]}"
+        PROJECT=$(basename "$DIR")
+      fi
+    fi
+  fi
+fi
+
+# --- Clone if still not found ---
+if [[ -z "$DIR" ]]; then
+  echo "Not found locally. Cloning from AdPlatformV2..."
+  DIR="$DEV_ROOT/AdPlatformV2/$PROJECT"
+  git clone "git@github.twdcgrid.net:AdPlatformV2/$PROJECT.git" "$DIR" || {
+    echo "AdPlatformV2 failed. Trying AppPipelines..."
+    DIR="$DEV_ROOT/AppPipelines/$PROJECT"
+    git clone "git@github.twdcgrid.net:AppPipelines/$PROJECT.git" "$DIR"
+  }
+fi
+
+# --- Re-check if session already exists after resolution ---
+if tmux has-session -t "=$PROJECT" 2>/dev/null; then
+  echo "Session '$PROJECT' exists. Attaching..."
+  exec tmux attach -t "=$PROJECT"
+fi
+
+# --- Create new session and run claude command ---
+tmux new-session -d -s "$PROJECT" -c "$DIR"
+tmux send-keys -t "$PROJECT" "${CLAUDE_CMD[*]}" Enter
+exec tmux attach -t "$PROJECT"
