@@ -1,7 +1,10 @@
 package com.claude.remote.features.chat
 
 import android.content.Context
+import android.text.InputType
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,7 +31,7 @@ class TerminalWebViewHolder @Inject constructor() {
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
 
     fun getOrCreate(context: Context): WebView {
-        return webView ?: WebView(context).also {
+        return webView ?: TerminalWebView(context).also {
             webView = it
             isInitialized = false
         }
@@ -46,5 +49,24 @@ class TerminalWebViewHolder @Inject constructor() {
         webView?.destroy()
         webView = null
         isInitialized = false
+    }
+}
+
+/**
+ * Custom WebView that disables Android IME composing/prediction.
+ * Without this, the keyboard holds characters in the prediction bar
+ * instead of sending them directly to xterm.js.
+ */
+class TerminalWebView(context: Context) : WebView(context) {
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        val ic = super.onCreateInputConnection(outAttrs)
+        // Disable word prediction and composing — send each key immediately
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        outAttrs.imeOptions = outAttrs.imeOptions or
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+            EditorInfo.IME_FLAG_NO_FULLSCREEN
+        return ic
     }
 }
