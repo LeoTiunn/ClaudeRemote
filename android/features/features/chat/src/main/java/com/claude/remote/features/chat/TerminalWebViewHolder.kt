@@ -60,10 +60,9 @@ class TerminalWebViewHolder @Inject constructor() {
 class TerminalWebView(context: Context) : WebView(context) {
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         val ic = super.onCreateInputConnection(outAttrs)
-        // Disable word prediction and composing — send each key immediately
+        // Disable suggestions but keep composing for swipe typing
         outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
-            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = outAttrs.imeOptions or
             EditorInfo.IME_FLAG_NO_EXTRACT_UI or
             EditorInfo.IME_FLAG_NO_FULLSCREEN
