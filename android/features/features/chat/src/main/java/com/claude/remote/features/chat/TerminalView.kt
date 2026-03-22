@@ -65,10 +65,9 @@ fun TerminalView(
                 false
             }
 
-            // Ensure WebView can receive keyboard input
-            wv.isFocusable = true
-            wv.isFocusableInTouchMode = true
-            wv.requestFocus()
+            // WebView is display-only — keyboard input handled by TerminalInputProxy
+            wv.isFocusable = false
+            wv.isFocusableInTouchMode = false
 
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
