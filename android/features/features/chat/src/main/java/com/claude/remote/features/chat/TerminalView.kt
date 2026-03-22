@@ -65,10 +65,16 @@ fun TerminalView(
                 false
             }
 
+            // Ensure WebView can receive keyboard input
+            wv.isFocusable = true
+            wv.isFocusableInTouchMode = true
+            wv.requestFocus()
+
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
+                    DebugLog.log("WEBVIEW", "UserAgent: ${view?.settings?.userAgentString}")
                     webViewHolder.markInitialized()
                     pageLoaded.value = true
                     val fs = webViewHolder.fontSize
