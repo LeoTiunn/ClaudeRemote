@@ -48,7 +48,26 @@ cp server/bin/* ~/bin/
 
 ## Client Scripts (`client/bin/`)
 
-TBD — will provide the same `tc*` commands but from a local machine, connecting to the remote server via SSH.
+Same `tc*` commands but from a local Mac, connecting to the remote server via SSH.
+
+Uses `sshpass` + macOS Keychain for passwordless SSH, then calls the server-side scripts over an interactive TTY.
+
+| Command | Description |
+|---------|-------------|
+| `tc [project]` | New claude session |
+| `tcx [project]` | New session, auto-approve permissions |
+| `tcc [project]` | Continue last conversation |
+| `tccx [project]` | Continue, auto-approve |
+| `tcr [project]` | Resume (pick conversation) |
+| `tcrx [project]` | Resume, auto-approve |
+
+### Installation
+
+```bash
+cp client/bin/* ~/.local/bin/
+```
+
+See [`client/README.md`](client/README.md) for full setup (sshpass, Keychain).
 
 ## Android App (`android/`)
 

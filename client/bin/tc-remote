@@ -1,0 +1,36 @@
+#!/bin/zsh
+# tc-remote - SSH into remote server and run a tc command
+# Usage: tc-remote <remote-cmd> [args...]
+#
+# Requires: sshpass, macOS Keychain entry 'asune-ssh'
+
+set -e
+
+REMOTE="leo.chang@asune.asuscomm.com"
+KEYCHAIN_SERVICE="asune-ssh"
+
+# Check dependencies
+if ! command -v sshpass &>/dev/null; then
+  echo "Missing sshpass: brew install esolitos/ipa/sshpass"
+  exit 1
+fi
+
+# Get password from macOS Keychain
+SSHPASS="$(security find-generic-password -s "$KEYCHAIN_SERVICE" -w 2>/dev/null)" || {
+  echo "No keychain entry for '$KEYCHAIN_SERVICE'."
+  echo "Add it with: security add-generic-password -s '$KEYCHAIN_SERVICE' -a '$REMOTE' -w"
+  exit 1
+}
+export SSHPASS
+
+# Build remote command
+CMD="$1"
+shift
+ARGS=""
+for arg in "$@"; do
+  ARGS="$ARGS '${arg//\'/\'\\\'\'}'"
+done
+
+# SSH with TTY for interactive tmux attach
+exec sshpass -e ssh -t -o StrictHostKeyChecking=no "$REMOTE" \
+  "export PATH=\$HOME/bin:\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; $CMD$ARGS"
