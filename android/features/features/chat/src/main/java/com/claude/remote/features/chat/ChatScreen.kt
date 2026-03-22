@@ -264,7 +264,10 @@ fun ChatScreen(
             )
 
             TerminalKeysBar(
-                onKey = { seq -> viewModel.sendRawEscape(seq) },
+                onKey = { seq ->
+                    viewModel.sendRawEscape(seq)
+                    viewModel.refocusTerminal()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()

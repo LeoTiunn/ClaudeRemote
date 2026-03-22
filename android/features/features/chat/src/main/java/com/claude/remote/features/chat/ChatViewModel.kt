@@ -353,6 +353,12 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun refocusTerminal() {
+        webViewHolder.webView?.post {
+            webViewHolder.webView?.evaluateJavascript("if(term)term.focus()", null)
+        }
+    }
+
     fun stopStreaming() {
         _uiState.update { it.copy(isStreaming = false) }
     }
