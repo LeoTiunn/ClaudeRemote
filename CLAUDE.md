@@ -4,9 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Native Android app (Kotlin + Jetpack Compose) that connects via SSH to a remote server and pipes messages to/from a tmux session running the Claude CLI. The UI mirrors the Claude iOS app experience.
+Remote access to Claude CLI via tmux sessions. Three components:
+
+1. **`server/`** — Server-side scripts (tmux+Claude session management, runs on remote host)
+2. **`client/`** — Client-side scripts (TBD, will SSH to server)
+3. **`android/`** — Android app (Kotlin + Jetpack Compose, connects via SSH)
 
 Remote server: `leo.chang@asuscomm.com` (SSH)
+
+## Project Structure
+
+```
+ClaudeRemote/
+├── server/bin/      # tc, tcx, tcc, tccx, tcr, tcrx (deploy to ~/bin/)
+├── client/bin/      # TBD
+├── android/         # Android Gradle project
+│   ├── app/
+│   ├── core/        # ssh, tmux, ui modules
+│   ├── features/    # chat, session, settings
+│   └── gradle/
+├── docs/
+└── .github/workflows/
+```
 
 ## Architecture
 
@@ -68,7 +87,9 @@ Remote server: `leo.chang@asuscomm.com` (SSH)
 
 ## Development Notes
 
-- Full design specification: `2026-03-20-claude-remote-android-design.md`
+- Android app is under `android/` — run `cd android && ./gradlew assembleDebug`
+- Full design specification: `docs/plans/2026-03-20-claude-remote-android-design.md`
 - SSH connection persists in background with auto-reconnect
 - tmux binary path and Claude CLI path are configurable
 - Network loss: queue messages, send when reconnected
+- Server scripts: source of truth in `server/bin/`, deploy by copying to `~/bin/`

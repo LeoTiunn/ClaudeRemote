@@ -1,13 +1,17 @@
 # ClaudeRemote
 
-Remote access to Claude CLI via tmux sessions. Two components:
+Remote access to Claude CLI via tmux sessions.
 
-1. **Android App** — Kotlin/Jetpack Compose client that connects via SSH to a remote server and interacts with Claude through a tmux terminal
-2. **Server Scripts** — tmux+Claude session management commands
+```
+ClaudeRemote/
+├── server/      # Server-side tmux+Claude session scripts
+├── client/      # Client-side scripts (TBD)
+└── android/     # Android app (Kotlin + Jetpack Compose)
+```
 
 ## Server Scripts (`server/bin/`)
 
-Session management commands that mirror the Claude CLI aliases but wrap them in tmux. All commands share the same session-finding logic:
+Session management commands that mirror Claude CLI aliases but wrap them in tmux. All commands share the same session-finding logic:
 
 1. `tcx podz` — exact match active tmux session "podz" → attach
 2. No match — lists all active sessions + fuzzy project matches under `~/Developer`
@@ -36,17 +40,19 @@ cr  → tcr      crx → tcrx
 
 ### Installation
 
-Symlink scripts to a directory in your PATH:
+Copy scripts to a directory in your PATH:
 
 ```bash
-for f in server/bin/*; do
-  ln -sf "$(pwd)/$f" ~/bin/$(basename "$f")
-done
+cp server/bin/* ~/bin/
 ```
 
-## Android App
+## Client Scripts (`client/bin/`)
 
-Native Android app (Kotlin + Jetpack Compose) that connects via SSH to the remote server and pipes input/output to a tmux session running Claude CLI.
+TBD — will provide the same `tc*` commands but from a local machine, connecting to the remote server via SSH.
+
+## Android App (`android/`)
+
+Native Android app that connects via SSH to the remote server and provides a terminal UI for Claude CLI through tmux.
 
 ### Features
 
@@ -57,6 +63,13 @@ Native Android app (Kotlin + Jetpack Compose) that connects via SSH to the remot
 - Auto-reconnect on network loss
 - Light/dark/system theme
 
+### Build
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
 ### Tech Stack
 
-- Kotlin, Jetpack Compose, Apache MINA sshd, EncryptedSharedPreferences, Coroutines + Flow
+Kotlin, Jetpack Compose, Apache MINA sshd, EncryptedSharedPreferences, Coroutines + Flow
