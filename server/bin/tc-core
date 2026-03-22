@@ -30,7 +30,8 @@ show_sessions() {
     echo "  $i) ${SESSIONS[$i]}"
   done
   echo ""
-  read "pick?Attach to session (number), or enter project name: "
+  read "pick?Attach to session (number), enter project name, or x to quit: "
+  [[ "$pick" == "x" ]] && exit 0
   if [[ "$pick" -gt 0 ]] 2>/dev/null && [[ "$pick" -le ${#SESSIONS[@]} ]]; then
     exec tmux attach -t "${SESSIONS[$pick]}"
   elif [[ -n "$pick" ]]; then
@@ -89,7 +90,8 @@ if [[ -z "$DIR" ]]; then
   TOTAL=$((N + ${#MATCHES[@]}))
   if [[ $TOTAL -gt 0 ]]; then
     echo ""
-    read "pick?Pick a number (or 0 to clone): "
+    read "pick?Pick a number (0 to clone, x to quit): "
+    [[ "$pick" == "x" ]] && exit 0
     if [[ "$pick" -gt 0 ]] 2>/dev/null && [[ "$pick" -le $TOTAL ]]; then
       if [[ "$pick" -le $N ]]; then
         exec tmux attach -t "${SESSIONS[$pick]}"
