@@ -80,14 +80,32 @@ class TerminalInputConnection(
 ) : InputConnectionWrapper(target, true) {
 
     override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        // Don't compose — commit each character immediately
+        // Never compose — commit immediately
         if (text != null && text.isNotEmpty()) {
             return commitText(text, newCursorPosition)
         }
-        return super.setComposingText(text, newCursorPosition)
+        return true
+    }
+
+    override fun setComposingRegion(start: Int, end: Int): Boolean {
+        // Block composing region
+        return true
     }
 
     override fun finishComposingText(): Boolean {
         return super.finishComposingText()
+    }
+
+    override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
+        // Return empty so keyboard doesn't try to recompose previous text
+        return ""
+    }
+
+    override fun getTextAfterCursor(n: Int, flags: Int): CharSequence? {
+        return ""
+    }
+
+    override fun getSelectedText(flags: Int): CharSequence? {
+        return null
     }
 }
