@@ -101,11 +101,13 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-reconnect when app resumes and SSH is disconnected
+    // Auto-reconnect or refresh terminal when app resumes
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
+            } else if (uiState.isTerminalMode) {
+                viewModel.refreshTerminal()
             }
         }
     }

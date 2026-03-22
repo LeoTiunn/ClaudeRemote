@@ -114,6 +114,22 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun refreshTerminal() {
+        if (!sshClient.isAttachedToTmux) return
+        // Force xterm.js to re-render and send Ctrl+L to tmux for full redraw
+        webViewHolder.webView?.post {
+            webViewHolder.webView?.evaluateJavascript(
+                "if(term){term.refresh(0,term.rows-1);if(lastWidthPx>0&&lastHeightPx>0)setTermSize(lastWidthPx,lastHeightPx)}", null
+            )
+        }
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.delay(300)
+                sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
+            } catch (_: Exception) {}
+        }
+    }
+
     fun reconnect() {
         val sessionName = sshClient.currentSessionName
         if (sessionName.isEmpty()) return
