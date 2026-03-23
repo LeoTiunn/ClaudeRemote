@@ -1,11 +1,12 @@
 package com.claude.remote.features.chat
 
 import android.content.Context
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
 import android.view.KeyEvent
+import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputConnectionWrapper
 import android.widget.EditText
 import com.claude.remote.core.ssh.DebugLog
 
@@ -13,22 +14,23 @@ import com.claude.remote.core.ssh.DebugLog
  * Native Android EditText that captures all keyboard input and forwards
  * it to the terminal via SSH. Bypasses WebView's flaky InputConnection.
  *
- * Supports both regular typing and swipe typing:
- * - Composing text (swipe preview) is handled natively by Android
+ * Strategy:
+ * - TYPE_CLASS_TEXT allows composing (swipe typing preview)
+ * - TextWatcher detects committed vs composing text using span inspection
  * - Only committed text gets sent to the terminal
- * - Backspace/delete handled via deleteSurroundingText and key events
+ * - Backspace handled via onKeyDown
  */
 class TerminalInputProxy(context: Context) : EditText(context) {
 
     var onTerminalInput: ((String) -> Unit)? = null
+    private var ignoreNextChange = false
+    private var lastComposingLength = 0
 
     init {
-        // Allow composing for swipe typing — no VISIBLE_PASSWORD restriction
-        inputType = InputType.TYPE_CLASS_TEXT or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        // TYPE_CLASS_TEXT allows composing for swipe typing
+        inputType = InputType.TYPE_CLASS_TEXT
         imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or
-            EditorInfo.IME_FLAG_NO_FULLSCREEN or
-            EditorInfo.IME_ACTION_NONE
+            EditorInfo.IME_FLAG_NO_FULLSCREEN
         // Make invisible but still focusable for keyboard
         alpha = 0f
         setBackgroundColor(0)
@@ -36,61 +38,72 @@ class TerminalInputProxy(context: Context) : EditText(context) {
         height = 1
         isFocusable = true
         isFocusableInTouchMode = true
-    }
 
-    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
-        val base = super.onCreateInputConnection(outAttrs) ?: return null
-        return TerminalInputConnection(base)
-    }
+        addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (ignoreNextChange || s == null) return
 
-    private inner class TerminalInputConnection(
-        base: InputConnection
-    ) : InputConnectionWrapper(base, true) {
+                // Check if text is currently being composed (swipe in progress)
+                val editable = s as? Editable
+                val composingStart = if (editable != null)
+                    BaseInputConnection.getComposingSpanStart(editable) else -1
+                val composingEnd = if (editable != null)
+                    BaseInputConnection.getComposingSpanEnd(editable) else -1
+                val isComposing = composingStart >= 0 && composingEnd > composingStart
 
-        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            if (text != null && text.isNotEmpty()) {
-                DebugLog.log("INPUT_PROXY", "commitText: '${text.toString().take(50)}' (${text.length} chars)")
-                onTerminalInput?.invoke(text.toString())
-            }
-            // Clear the field so it doesn't accumulate
-            super.setComposingText("", 1)
-            super.commitText("", 1)
-            return true
-        }
+                if (isComposing) {
+                    // Swipe in progress — don't send yet, track length
+                    lastComposingLength = s.length
+                    return
+                }
 
-        override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            // Let composing happen natively (swipe preview on keyboard)
-            // Don't send to terminal — only commitText sends
-            return super.setComposingText(text, newCursorPosition)
-        }
-
-        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-            // Send backspace for each deleted character
-            if (beforeLength > 0) {
-                DebugLog.log("INPUT_PROXY", "deleteSurrounding: $beforeLength chars")
-                repeat(beforeLength) {
-                    onTerminalInput?.invoke("\u007f")
+                // Text is committed (not composing)
+                if (count > 0 && s.isNotEmpty()) {
+                    val newText = s.subSequence(start, start + count).toString()
+                    DebugLog.log("INPUT_PROXY", "Committed: '${newText.take(50)}' (${newText.length} chars)")
+                    onTerminalInput?.invoke(newText)
                 }
             }
-            return super.deleteSurroundingText(beforeLength, afterLength)
-        }
 
-        override fun sendKeyEvent(event: KeyEvent?): Boolean {
-            if (event?.action == KeyEvent.ACTION_DOWN) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DEL -> {
-                        DebugLog.log("INPUT_PROXY", "KeyEvent DEL")
-                        onTerminalInput?.invoke("\u007f")
-                        return true
-                    }
-                    KeyEvent.KEYCODE_ENTER -> {
-                        DebugLog.log("INPUT_PROXY", "KeyEvent ENTER")
-                        onTerminalInput?.invoke("\r")
-                        return true
-                    }
+            override fun afterTextChanged(s: Editable?) {
+                if (ignoreNextChange || s == null || s.isEmpty()) return
+
+                // Check if still composing
+                val composingStart = BaseInputConnection.getComposingSpanStart(s)
+                val composingEnd = BaseInputConnection.getComposingSpanEnd(s)
+                val isComposing = composingStart >= 0 && composingEnd > composingStart
+
+                if (!isComposing) {
+                    // Composing done or regular input — clear the field
+                    ignoreNextChange = true
+                    lastComposingLength = 0
+                    s.clear()
+                    ignoreNextChange = false
                 }
             }
-            return super.sendKeyEvent(event)
+        })
+
+        // Handle Enter from IME action
+        setOnEditorActionListener { _, _, _ ->
+            onTerminalInput?.invoke("\r")
+            true
         }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_DEL -> {
+                DebugLog.log("INPUT_PROXY", "Backspace")
+                onTerminalInput?.invoke("\u007f")
+                return true
+            }
+            KeyEvent.KEYCODE_ENTER -> {
+                DebugLog.log("INPUT_PROXY", "Enter")
+                onTerminalInput?.invoke("\r")
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }
