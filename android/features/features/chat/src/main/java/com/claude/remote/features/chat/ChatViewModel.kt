@@ -119,28 +119,20 @@ class ChatViewModel @Inject constructor(
 
     init {
         // Recover terminal mode if SSH is already attached to tmux
-        // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
         _uiState.update { it.copy(sessionName = sshClient.currentSessionName) }
         if (sshClient.isAttachedToTmux) {
             _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
-            // Force tmux to redraw so the new WebView gets content
-            viewModelScope.launch {
-                kotlinx.coroutines.delay(500) // Wait for WebView to load
-                try {
-                    // Send refresh sequence: Ctrl+L redraws the screen
-                    sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
-                } catch (_: Exception) {}
-            }
+            // Native terminal handles its own redraw via SshTerminalSession.start()
         }
 
+        // Output collector for non-terminal (chat) mode only.
+        // In terminal mode, SshTerminalSession collects output directly.
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
-                if (sshClient.isAttachedToTmux) {
-                    _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
-                    _terminalOutput.emit(chunk)
-                } else {
+                if (!sshClient.isAttachedToTmux) {
                     handleOutputChunk(chunk)
                 }
+                // When attached to tmux, SshTerminalSession handles output
             }
         }
 
@@ -148,7 +140,6 @@ class ChatViewModel @Inject constructor(
             sshClient.connectionState.collect { state ->
                 val wasDisconnected = _uiState.value.connectionState != com.claude.remote.core.ui.components.ConnectionState.CONNECTED
                 _uiState.update { it.copy(connectionState = state, isReconnecting = false) }
-                // Auto-reconnect to session after SSH reconnects
                 if (state == com.claude.remote.core.ui.components.ConnectionState.CONNECTED && wasDisconnected) {
                     val session = sshClient.currentSessionName
                     if (session.isNotEmpty() && !sshClient.isAttachedToTmux) {
@@ -161,15 +152,8 @@ class ChatViewModel @Inject constructor(
 
     fun refreshTerminal() {
         if (!sshClient.isAttachedToTmux) return
-        // Force xterm.js to re-render and send Ctrl+L to tmux for full redraw
-        webViewHolder.webView?.post {
-            webViewHolder.webView?.evaluateJavascript(
-                "if(term){term.refresh(0,term.rows-1);if(lastWidthPx>0&&lastHeightPx>0)setTermSize(lastWidthPx,lastHeightPx)}", null
-            )
-        }
         viewModelScope.launch {
             try {
-                kotlinx.coroutines.delay(300)
                 sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
             } catch (_: Exception) {}
         }
