@@ -76,7 +76,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,11 +101,13 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-reconnect when app resumes and SSH is disconnected
+    // Auto-reconnect or refresh terminal when app resumes
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
+            } else if (uiState.isTerminalMode) {
+                viewModel.refreshTerminal()
             }
         }
     }
@@ -226,8 +227,11 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                NativeTerminalView(
-                    sshTerminalSession = viewModel.getOrCreateTerminalSession(),
+                TerminalView(
+                    outputFlow = viewModel.terminalOutput,
+                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                    onInput = { data -> viewModel.sendRawEscape(data) },
+                    webViewHolder = viewModel.webViewHolder,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()

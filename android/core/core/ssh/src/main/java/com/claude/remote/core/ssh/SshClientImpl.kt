@@ -107,8 +107,8 @@ class SshClientImpl @Inject constructor() : SshClient {
                 config["TCPKeepAlive"] = "yes"
                 session.setConfig(config)
                 session.timeout = 0  // No socket timeout — rely on keep-alive
-                session.setServerAliveInterval(10_000)  // SSH keepalive every 10s
-                session.setServerAliveCountMax(6)  // Allow 60s of missed keepalives
+                session.setServerAliveInterval(10_000)
+                session.setServerAliveCountMax(6)
 
                 DebugLog.log("SSH", "Calling session.connect()...")
                 session.connect(15_000)
@@ -236,13 +236,11 @@ class SshClientImpl @Inject constructor() : SshClient {
     private fun attemptReconnect() {
         if (host.isBlank()) return
         scope.launch {
-            for (attempt in 1..10) {
-                val delayMs = minOf(attempt * 1000L, 5000L)
-                DebugLog.log("SSH", "Reconnect attempt $attempt/10 (delay=${delayMs}ms)")
-                delay(delayMs)
+            for (attempt in 1..5) {
+                DebugLog.log("SSH", "Reconnect attempt $attempt/5")
+                delay(attempt * 3000L)
                 try {
                     connect(host, port, username, password)
-                    DebugLog.log("SSH", "Reconnect $attempt succeeded")
                     return@launch
                 } catch (e: Exception) {
                     DebugLog.log("SSH", "Reconnect $attempt failed: ${e.message}")
@@ -338,22 +336,9 @@ class SshClientImpl @Inject constructor() : SshClient {
 
     override suspend fun sendRawBytes(data: ByteArray) {
         withContext(Dispatchers.IO) {
-            val stream = shellOutputStream
-            if (stream == null) {
-                DebugLog.log("SSH", "sendRawBytes: stream NULL, ${data.size}b dropped")
-                return@withContext
-            }
-            try {
+            shellOutputStream?.let { stream ->
                 stream.write(data)
                 stream.flush()
-            } catch (e: Exception) {
-                DebugLog.log("SSH", "sendRawBytes FAILED: ${e.message}")
-                // Connection died during write — trigger reconnect
-                shellOutputStream = null
-                if (_connectionState.value == ConnectionState.CONNECTED) {
-                    _connectionState.value = ConnectionState.DISCONNECTED
-                    attemptReconnect()
-                }
             }
         }
     }

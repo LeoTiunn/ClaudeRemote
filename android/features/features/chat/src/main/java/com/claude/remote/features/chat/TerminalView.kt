@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -54,25 +55,20 @@ fun TerminalView(
             val bgColor = if (webViewHolder.isDarkTheme) "#1C1917" else "#FFF8F4"
             wv.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
 
-            // Prevent parent Compose layout from intercepting scroll events
             wv.setOnTouchListener { v, event ->
                 when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE ->
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
                         v.parent?.requestDisallowInterceptTouchEvent(true)
-                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
                         v.parent?.requestDisallowInterceptTouchEvent(false)
                 }
-                false // Let WebView handle the touch for native scroll
+                false
             }
-
-            wv.isFocusable = true
-            wv.isFocusableInTouchMode = true
 
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
-                    DebugLog.log("WEBVIEW", "UserAgent: ${view?.settings?.userAgentString}")
                     webViewHolder.markInitialized()
                     pageLoaded.value = true
                     val fs = webViewHolder.fontSize

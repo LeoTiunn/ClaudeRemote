@@ -8,7 +8,7 @@ import javax.inject.Singleton
 
 /**
  * Keeps the terminal WebView alive across navigation events.
- * WebView is display-only — keyboard input is handled by TerminalInputProxy.
+ * WebView must be created with Activity context (not Application) for keyboard to work.
  * Call getOrCreate(activityContext) the first time.
  */
 @Singleton
@@ -36,13 +36,6 @@ class TerminalWebViewHolder @Inject constructor() {
 
     fun markInitialized() {
         isInitialized = true
-    }
-
-    /** Flush write buffer and scroll to bottom — call when user types */
-    fun flushOnInput() {
-        webView?.post {
-            webView?.evaluateJavascript("if(window.flushOnInput)flushOnInput()", null)
-        }
     }
 
     fun detachFromParent() {

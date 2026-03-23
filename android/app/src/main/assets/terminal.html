@@ -23,7 +23,6 @@
   .xterm-viewport {
     -webkit-overflow-scrolling: touch !important;
     will-change: scroll-position;
-    touch-action: pan-y;
   }
 </style>
 </head>
@@ -77,10 +76,6 @@ try {
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
-  // xterm.js's hidden textarea handles all keyboard input natively.
-  // Tap the terminal → textarea gets focus → keyboard appears → typing works.
-  // No Android-side proxy needed.
-
   function notifySize(cols, rows) {
     if (cols !== lastCols || rows !== lastRows) {
       lastCols = cols;
@@ -120,10 +115,8 @@ try {
     }
   };
 
-  // Smooth scroll with momentum and write buffering.
-  // Android WebView doesn't provide native momentum for inner overflow divs,
-  // so we implement momentum in JS. Touch events flow naturally from the
-  // WebView (TerminalInputProxy is NOT an overlay — it's a tiny 1dp strip).
+  // Touch scroll with write buffering
+  // Re-acquires viewport reference each touchstart to survive WebView resume
   (function() {
     var el = document.getElementById('terminal');
     var viewport = null;
@@ -131,15 +124,11 @@ try {
     var velocity = 0;
     var lastTime = 0;
     var momentumId = null;
+    var scrollMultiplier = 1.8;
 
     function getViewport() {
       viewport = document.querySelector('.xterm-viewport');
       return viewport;
-    }
-
-    function isAtBottom() {
-      if (!viewport) return true;
-      return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 10;
     }
 
     function flushWriteBuffer() {
@@ -149,22 +138,15 @@ try {
         writeBuffer = [];
         term.write(combined);
       }
-      if (isAtBottom()) term.scrollToBottom();
-    }
-
-    // Expose globally so Kotlin can call on user input
-    window.flushOnInput = function() {
-      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
-      flushWriteBuffer();
       term.scrollToBottom();
-    };
+    }
 
     el.addEventListener('touchstart', function(e) {
       getViewport();
       if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       velocity = 0;
+      isUserScrolling = true;
       if (e.touches.length === 1) {
         lastY = e.touches[0].clientY;
         lastTime = Date.now();
@@ -173,31 +155,26 @@ try {
 
     el.addEventListener('touchmove', function(e) {
       if (!viewport || lastY === null || e.touches.length !== 1) return;
+      e.preventDefault();
       var y = e.touches[0].clientY;
-      var dy = lastY - y;
+      var dy = (lastY - y) * scrollMultiplier;
       var now = Date.now();
       var dt = now - lastTime;
-      if (dt > 0) velocity = velocity * 0.3 + (dy / dt) * 0.7;
+      if (dt > 0) velocity = velocity * 0.4 + (dy / dt) * 0.6;
       lastY = y;
       lastTime = now;
-      // Only set isUserScrolling when actually scrolled away from bottom
-      if (!isAtBottom()) isUserScrolling = true;
       viewport.scrollTop += dy;
-    }, { passive: true });
+    }, { passive: false });
 
     el.addEventListener('touchend', function() {
       lastY = null;
-      if (viewport && Math.abs(velocity) > 0.3) {
-        var v = velocity * 16; // scale to ~1 frame worth
+      if (viewport && Math.abs(velocity) > 0.15) {
+        var v = velocity * 20;
+        var friction = 0.96;
         function momentum() {
-          v *= 0.95; // friction: 5% per frame
-          if (Math.abs(v) < 0.5) {
-            // Momentum done — flush after short delay or immediately if at bottom
-            if (isAtBottom()) {
-              flushWriteBuffer();
-            } else {
-              flushTimer = setTimeout(flushWriteBuffer, 500);
-            }
+          v *= friction;
+          if (Math.abs(v) < 0.3) {
+            flushTimer = setTimeout(flushWriteBuffer, 3000);
             return;
           }
           viewport.scrollTop += v;
@@ -205,12 +182,7 @@ try {
         }
         momentumId = requestAnimationFrame(momentum);
       } else {
-        // No momentum — flush soon
-        if (isAtBottom()) {
-          flushWriteBuffer();
-        } else {
-          flushTimer = setTimeout(flushWriteBuffer, 500);
-        }
+        flushTimer = setTimeout(flushWriteBuffer, 3000);
       }
     }, { passive: true });
   })();
