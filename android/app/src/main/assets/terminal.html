@@ -76,6 +76,16 @@ try {
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
+  // Disable xterm.js's hidden textarea — keyboard input is handled
+  // by native Android TerminalInputProxy (EditText overlay).
+  // Without this, both xterm's textarea and our EditText compete
+  // for keyboard input, causing duplication and missed keys.
+  var ta = document.querySelector('.xterm-helper-textarea');
+  if (ta) {
+    ta.disabled = true;
+    ta.style.display = 'none';
+  }
+
   function notifySize(cols, rows) {
     if (cols !== lastCols || rows !== lastRows) {
       lastCols = cols;
