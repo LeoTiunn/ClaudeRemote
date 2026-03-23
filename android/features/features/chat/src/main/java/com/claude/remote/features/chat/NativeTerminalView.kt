@@ -40,7 +40,7 @@ fun NativeTerminalView(
                 }
             }
             override fun shouldBackButtonBeMappedToEscape() = false
-            override fun shouldEnforceCharBasedInput() = false
+            override fun shouldEnforceCharBasedInput() = true
             override fun shouldUseCtrlSpaceWorkaround() = false
             override fun isTerminalViewSelected() = true
             override fun copyModeChanged(copyMode: Boolean) {}
