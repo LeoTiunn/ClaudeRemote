@@ -26,6 +26,7 @@ fun TerminalView(
     outputFlow: Flow<String>,
     onResize: ((cols: Int, rows: Int) -> Unit)? = null,
     onInput: ((String) -> Unit)? = null,
+    onTap: (() -> Unit)? = null,
     webViewHolder: TerminalWebViewHolder,
     modifier: Modifier = Modifier
 ) {
@@ -55,11 +56,27 @@ fun TerminalView(
             val bgColor = if (webViewHolder.isDarkTheme) "#1C1917" else "#FFF8F4"
             wv.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
 
+            var downX = 0f
+            var downY = 0f
+            val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
             wv.setOnTouchListener { v, event ->
                 when (event.action) {
-                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
                         v.parent?.requestDisallowInterceptTouchEvent(true)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val dx = event.x - downX
+                        val dy = event.y - downY
+                        if (dx * dx + dy * dy < slop * slop) {
+                            onTap?.invoke()
+                        }
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                    MotionEvent.ACTION_MOVE ->
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_CANCEL ->
                         v.parent?.requestDisallowInterceptTouchEvent(false)
                 }
                 false
