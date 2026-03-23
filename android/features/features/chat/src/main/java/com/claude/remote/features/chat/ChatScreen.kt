@@ -75,7 +75,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -227,15 +229,54 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                TerminalView(
-                    outputFlow = viewModel.terminalOutput,
-                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                    onInput = { data -> viewModel.sendRawEscape(data) },
-                    webViewHolder = viewModel.webViewHolder,
+                var inputProxy by remember { mutableStateOf<TerminalInputProxy?>(null) }
+
+                fun focusProxy() {
+                    inputProxy?.let { proxy ->
+                        proxy.requestFocus()
+                        val imm = proxy.context.getSystemService(
+                            android.content.Context.INPUT_METHOD_SERVICE
+                        ) as? android.view.inputmethod.InputMethodManager
+                        imm?.showSoftInput(proxy, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                    }
+                }
+
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                )
+                ) {
+                    TerminalView(
+                        outputFlow = viewModel.terminalOutput,
+                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                        onInput = { data -> viewModel.sendRawEscape(data) },
+                        onTap = { focusProxy() },
+                        webViewHolder = viewModel.webViewHolder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Invisible EditText for keyboard input (swipe, Chinese IME, etc.)
+                    AndroidView(
+                        factory = { ctx ->
+                            TerminalInputProxy(ctx).apply {
+                                onTerminalInput = { data ->
+                                    DebugLog.log("INPUT_PROXY", "-> sendRawEscape: '${data.take(20)}'")
+                                    viewModel.sendRawEscape(data)
+                                }
+                            }.also { inputProxy = it }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(1.dp)
+                    )
+                }
+
+                // Auto-focus proxy when entering terminal mode
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(500)
+                    focusProxy()
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
