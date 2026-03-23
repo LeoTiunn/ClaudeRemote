@@ -76,6 +76,7 @@ class ChatViewModel @Inject constructor(
     }
 
     init {
+        // Recover terminal mode if not connected (no auto local echo in production)
         // Recover terminal mode if SSH is already attached to tmux
         // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
         _uiState.update { it.copy(sessionName = sshClient.currentSessionName) }

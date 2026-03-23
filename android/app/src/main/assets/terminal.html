@@ -126,20 +126,26 @@ try {
     }
   };
 
-  // Native scroll with write buffering
-  // Uses browser native scroll (no custom touch handler) for buttery smooth momentum.
-  // Buffers writes while user is scrolled up, flushes on scroll-to-bottom or timeout.
+  // Smooth scroll with momentum and write buffering.
+  // Android WebView doesn't provide native momentum for inner overflow divs,
+  // so we implement momentum in JS. Touch events flow naturally from the
+  // WebView (TerminalInputProxy is NOT an overlay — it's a tiny 1dp strip).
   (function() {
-    var flushDelay = 500;
+    var el = document.getElementById('terminal');
+    var viewport = null;
+    var lastY = null;
+    var velocity = 0;
+    var lastTime = 0;
+    var momentumId = null;
 
     function getViewport() {
-      return document.querySelector('.xterm-viewport');
+      viewport = document.querySelector('.xterm-viewport');
+      return viewport;
     }
 
     function isAtBottom() {
-      var vp = getViewport();
-      if (!vp) return true;
-      return vp.scrollHeight - vp.scrollTop - vp.clientHeight < 10;
+      if (!viewport) return true;
+      return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 10;
     }
 
     function flushWriteBuffer() {
@@ -152,36 +158,59 @@ try {
       if (isAtBottom()) term.scrollToBottom();
     }
 
-    var scrollTimer = null;
-    function onViewportScroll() {
-      if (!isUserScrolling && !isAtBottom()) {
-        isUserScrolling = true;
+    el.addEventListener('touchstart', function(e) {
+      getViewport();
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      velocity = 0;
+      if (e.touches.length === 1) {
+        lastY = e.touches[0].clientY;
+        lastTime = Date.now();
       }
-      if (isAtBottom()) {
-        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-        if (scrollTimer) { clearTimeout(scrollTimer); scrollTimer = null; }
-        flushWriteBuffer();
-      } else {
-        if (flushTimer) clearTimeout(flushTimer);
-        if (scrollTimer) clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(flushWriteBuffer, flushDelay);
-      }
-    }
-
-    function attachScrollListener() {
-      var vp = getViewport();
-      if (vp && !vp._scrollListenerAttached) {
-        vp.addEventListener('scroll', onViewportScroll, { passive: true });
-        vp._scrollListenerAttached = true;
-      }
-    }
-
-    // Re-acquire on touchstart (survives WebView resume where DOM refs go stale)
-    document.getElementById('terminal').addEventListener('touchstart', function() {
-      attachScrollListener();
     }, { passive: true });
 
-    setTimeout(attachScrollListener, 200);
+    el.addEventListener('touchmove', function(e) {
+      if (!viewport || lastY === null || e.touches.length !== 1) return;
+      var y = e.touches[0].clientY;
+      var dy = lastY - y;
+      var now = Date.now();
+      var dt = now - lastTime;
+      if (dt > 0) velocity = velocity * 0.3 + (dy / dt) * 0.7;
+      lastY = y;
+      lastTime = now;
+      // Only set isUserScrolling when actually scrolled away from bottom
+      if (!isAtBottom()) isUserScrolling = true;
+      viewport.scrollTop += dy;
+    }, { passive: true });
+
+    el.addEventListener('touchend', function() {
+      lastY = null;
+      if (viewport && Math.abs(velocity) > 0.3) {
+        var v = velocity * 16; // scale to ~1 frame worth
+        function momentum() {
+          v *= 0.95; // friction: 5% per frame
+          if (Math.abs(v) < 0.5) {
+            // Momentum done — flush after short delay or immediately if at bottom
+            if (isAtBottom()) {
+              flushWriteBuffer();
+            } else {
+              flushTimer = setTimeout(flushWriteBuffer, 500);
+            }
+            return;
+          }
+          viewport.scrollTop += v;
+          momentumId = requestAnimationFrame(momentum);
+        }
+        momentumId = requestAnimationFrame(momentum);
+      } else {
+        // No momentum — flush soon
+        if (isAtBottom()) {
+          flushWriteBuffer();
+        } else {
+          flushTimer = setTimeout(flushWriteBuffer, 500);
+        }
+      }
+    }, { passive: true });
   })();
 
   term.onData(function(data) {

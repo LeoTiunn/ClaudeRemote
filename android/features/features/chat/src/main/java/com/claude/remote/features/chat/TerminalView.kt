@@ -54,6 +54,17 @@ fun TerminalView(
             val bgColor = if (webViewHolder.isDarkTheme) "#1C1917" else "#FFF8F4"
             wv.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
 
+            // Prevent parent Compose layout from intercepting scroll events
+            wv.setOnTouchListener { v, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_MOVE ->
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                false // Let WebView handle the touch for native scroll
+            }
+
             wv.isFocusable = false
             wv.isFocusableInTouchMode = false
 

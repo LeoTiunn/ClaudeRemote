@@ -240,26 +240,30 @@ fun ChatScreen(
                         webViewHolder = viewModel.webViewHolder,
                         modifier = Modifier.fillMaxSize()
                     )
+                    // TerminalInputProxy: small invisible EditText for keyboard input.
+                    // Positioned at bottom with fixed height — NOT a fullMaxSize overlay,
+                    // so it doesn't block WebView scroll events.
                     AndroidView(
                         factory = { ctx ->
                             DebugLog.log("CHAT_SCREEN", "TerminalInputProxy factory: creating proxy")
                             TerminalInputProxy(ctx).apply {
                                 onTerminalInput = { input ->
-                                    DebugLog.log("CHAT_SCREEN", "onTerminalInput callback: '${input}' (${input.length} chars, bytes=${input.toByteArray(Charsets.UTF_8).joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }})")
+                                    DebugLog.log("CHAT_SCREEN", "onTerminalInput callback: '${input}' (${input.length} chars)")
                                     viewModel.sendRawEscape(input)
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .align(Alignment.BottomCenter),
                         update = { proxy ->
-                            proxy.siblingWebView = viewModel.webViewHolder.webView
                             proxy.onTerminalInput = { input ->
                                 DebugLog.log("CHAT_SCREEN", "onTerminalInput callback (update): '${input}' (${input.length} chars)")
                                 viewModel.sendRawEscape(input)
                             }
                             val gotFocus = proxy.requestFocus()
                             DebugLog.log("CHAT_SCREEN", "TerminalInputProxy update: requestFocus=$gotFocus isFocused=${proxy.isFocused} size=${proxy.width}x${proxy.height}")
-                            // Post showSoftInput to run after the view is laid out and served by IME
                             proxy.post {
                                 val imm = proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
                                 imm?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)

@@ -4,13 +4,9 @@ import android.content.Context
 import android.text.Editable
 import android.text.InputType
 import android.view.KeyEvent
-import android.view.MotionEvent
-import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputMethodManager
-import android.webkit.WebView
 import android.widget.EditText
 import com.claude.remote.core.ssh.DebugLog
 
@@ -29,11 +25,6 @@ import com.claude.remote.core.ssh.DebugLog
 class TerminalInputProxy(context: Context) : EditText(context) {
 
     var onTerminalInput: ((String) -> Unit)? = null
-    var siblingWebView: WebView? = null
-
-    private var downY = 0f
-    private var isScrolling = false
-    private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
 
     init {
         isFocusable = true
@@ -41,41 +32,9 @@ class TerminalInputProxy(context: Context) : EditText(context) {
         alpha = 0f
         setBackgroundColor(0)
         isCursorVisible = false
-        // Do NOT set height = 1 — let Compose Modifier control the size.
-        // A zero-size view causes "not served" errors from InputMethodManager.
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                downY = event.y
-                isScrolling = false
-                siblingWebView?.dispatchTouchEvent(event)
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!isScrolling && Math.abs(event.y - downY) > touchSlop) {
-                    isScrolling = true
-                }
-                if (isScrolling) {
-                    siblingWebView?.dispatchTouchEvent(event)
-                    return true
-                }
-                return true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                siblingWebView?.dispatchTouchEvent(event)
-                if (!isScrolling) {
-                    requestFocus()
-                    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
-                        as? InputMethodManager
-                    imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
-                }
-                isScrolling = false
-                return true
-            }
-        }
-        return super.onTouchEvent(event)
+        // Use a small but non-zero size so IME doesn't reject "not served".
+        // This view is positioned at the bottom of the terminal Box,
+        // NOT as a fullMaxSize overlay — so it doesn't block WebView scroll.
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
