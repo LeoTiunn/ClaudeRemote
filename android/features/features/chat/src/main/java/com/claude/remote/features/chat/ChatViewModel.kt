@@ -67,7 +67,7 @@ class ChatViewModel @Inject constructor(
 
     private fun ensureTerminalSession(): SshTerminalSession {
         return sshTerminalSession ?: SshTerminalSession(
-            sshClient, viewModelScope, sessionClient
+            sshClient, sessionClient
         ).also { sshTerminalSession = it }
     }
 
@@ -125,14 +125,16 @@ class ChatViewModel @Inject constructor(
             // Native terminal handles its own redraw via SshTerminalSession.start()
         }
 
-        // Output collector for non-terminal (chat) mode only.
-        // In terminal mode, SshTerminalSession collects output directly.
+        // Single output collector — routes to terminal emulator or chat mode.
+        // Only ONE collector on outputStream (same architecture as WebView era).
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
-                if (!sshClient.isAttachedToTmux) {
+                if (sshClient.isAttachedToTmux) {
+                    // Feed directly to Termux emulator for rendering
+                    sshTerminalSession?.feedOutput(chunk)
+                } else {
                     handleOutputChunk(chunk)
                 }
-                // When attached to tmux, SshTerminalSession handles output
             }
         }
 
