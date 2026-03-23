@@ -65,9 +65,8 @@ fun TerminalView(
                 false
             }
 
-            wv.isFocusable = true
-            wv.isFocusableInTouchMode = true
-            wv.requestFocus()
+            wv.isFocusable = false
+            wv.isFocusableInTouchMode = false
 
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {

@@ -52,6 +52,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -226,15 +227,33 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                TerminalView(
-                    outputFlow = viewModel.terminalOutput,
-                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                    onInput = { data -> viewModel.sendRawEscape(data) },
-                    webViewHolder = viewModel.webViewHolder,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                )
+                ) {
+                    TerminalView(
+                        outputFlow = viewModel.terminalOutput,
+                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                        onInput = { data -> viewModel.sendRawEscape(data) },
+                        webViewHolder = viewModel.webViewHolder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    AndroidView(
+                        factory = { ctx ->
+                            TerminalInputProxy(ctx).apply {
+                                onTerminalInput = { viewModel.sendRawEscape(it) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { proxy ->
+                            proxy.onTerminalInput = { viewModel.sendRawEscape(it) }
+                            proxy.requestFocus()
+                            (proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                                ?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
