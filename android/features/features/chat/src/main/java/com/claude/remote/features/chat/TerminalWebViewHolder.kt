@@ -5,14 +5,13 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputConnectionWrapper
 import android.webkit.WebView
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Keeps the terminal WebView alive across navigation events.
- * WebView must be created with Activity context (not Application) for keyboard to work.
+ * WebView is display-only — keyboard input is handled by TerminalInputProxy.
  * Call getOrCreate(activityContext) the first time.
  */
 @Singleton
@@ -32,7 +31,15 @@ class TerminalWebViewHolder @Inject constructor() {
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
 
     fun getOrCreate(context: Context): WebView {
-        return webView ?: TerminalWebView(context).also {
+        return webView ?: object : WebView(context) {
+            override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+                val ic = super.onCreateInputConnection(outAttrs)
+                // Tell IME: no composing, commit each key immediately
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                return ic
+            }
+        }.also {
             webView = it
             isInitialized = false
         }
@@ -50,62 +57,5 @@ class TerminalWebViewHolder @Inject constructor() {
         webView?.destroy()
         webView = null
         isInitialized = false
-    }
-}
-
-/**
- * Custom WebView that auto-commits composing text so characters go to
- * xterm.js immediately, while still allowing swipe typing (which uses
- * commitText directly when the swipe gesture completes).
- */
-class TerminalWebView(context: Context) : WebView(context) {
-    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
-        val ic = super.onCreateInputConnection(outAttrs) ?: return null
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        outAttrs.imeOptions = outAttrs.imeOptions or
-            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
-            EditorInfo.IME_FLAG_NO_FULLSCREEN
-        return TerminalInputConnection(ic)
-    }
-}
-
-/**
- * Intercepts setComposingText and immediately commits it instead.
- * This prevents the prediction bar from holding characters.
- * Swipe typing bypasses composing and calls commitText directly.
- */
-class TerminalInputConnection(
-    target: InputConnection
-) : InputConnectionWrapper(target, true) {
-
-    override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        // Never compose — commit immediately
-        if (text != null && text.isNotEmpty()) {
-            return commitText(text, newCursorPosition)
-        }
-        return true
-    }
-
-    override fun setComposingRegion(start: Int, end: Int): Boolean {
-        // Block composing region
-        return true
-    }
-
-    override fun finishComposingText(): Boolean {
-        return super.finishComposingText()
-    }
-
-    override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
-        // Return empty so keyboard doesn't try to recompose previous text
-        return ""
-    }
-
-    override fun getTextAfterCursor(n: Int, flags: Int): CharSequence? {
-        return ""
-    }
-
-    override fun getSelectedText(flags: Int): CharSequence? {
-        return null
     }
 }

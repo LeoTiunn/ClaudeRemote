@@ -76,16 +76,6 @@ try {
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal'));
 
-  // Disable IME composing on xterm's hidden textarea — prevents Android
-  // keyboard prediction bar from stealing input
-  var ta = document.querySelector('.xterm-helper-textarea');
-  if (ta) {
-    ta.setAttribute('type', 'password');
-    ta.setAttribute('autocomplete', 'off');
-    ta.setAttribute('autocorrect', 'off');
-    ta.setAttribute('autocapitalize', 'off');
-  }
-
   function notifySize(cols, rows) {
     if (cols !== lastCols || rows !== lastRows) {
       lastCols = cols;
