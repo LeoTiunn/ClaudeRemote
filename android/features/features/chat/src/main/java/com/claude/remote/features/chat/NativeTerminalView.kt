@@ -66,7 +66,8 @@ fun NativeTerminalView(
             TerminalView(ctx, null).apply {
                 termViewRef = this
                 setTerminalViewClient(viewClient)
-                attachSession(sshTerminalSession.session)
+                // Do NOT call attachSession() here — it would trigger initializeEmulator()
+                // which starts a local /bin/sh process. We need SSH emulator instead.
                 isFocusable = true
                 isFocusableInTouchMode = true
                 setTextSize(14)
@@ -83,8 +84,10 @@ fun NativeTerminalView(
                         val cols = (width / cellW).toInt().coerceAtLeast(10)
                         val rows = (height / cellH).toInt().coerceAtLeast(3)
                         DebugLog.log("NATIVE_TERM", "Layout: ${width}x${height}px → ${cols}x${rows}")
-                        if (mEmulator == null) {
+                        if (!sshTerminalSession.isStarted) {
+                            // First layout: create SSH emulator, then attach to view
                             sshTerminalSession.start(cols, rows, cellW.toInt(), cellH.toInt())
+                            attachSession(sshTerminalSession.session)
                         } else {
                             sshTerminalSession.resize(cols, rows, cellW.toInt(), cellH.toInt())
                         }

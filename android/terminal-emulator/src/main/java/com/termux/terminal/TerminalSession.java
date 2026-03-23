@@ -173,10 +173,21 @@ public final class TerminalSession extends TerminalOutput {
 
     }
 
-    /** Write data to the shell process. */
+    /** Optional external writer — set this to intercept all write() calls (e.g., for SSH). */
+    public WriteCallback mExternalWriter;
+
+    public interface WriteCallback {
+        void write(byte[] data, int offset, int count);
+    }
+
+    /** Write data to the shell process (or external writer if set). */
     @Override
     public void write(byte[] data, int offset, int count) {
-        if (mShellPid > 0) mTerminalToProcessIOQueue.write(data, offset, count);
+        if (mExternalWriter != null) {
+            mExternalWriter.write(data, offset, count);
+        } else if (mShellPid > 0) {
+            mTerminalToProcessIOQueue.write(data, offset, count);
+        }
     }
 
     /** Write the Unicode code point to the terminal encoded in UTF-8. */

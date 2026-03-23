@@ -27,6 +27,8 @@ class SshTerminalSession(
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var collectJob: Job? = null
+    @Volatile var isStarted = false
+        private set
     @Volatile private var emulatorReady = false
     private val preBuffer = ConcurrentLinkedQueue<ByteArray>()
 
@@ -42,11 +44,12 @@ class SshTerminalSession(
 
     /** Call from main thread after view has measured and knows cols/rows. */
     fun start(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
-        if (emulatorReady) {
+        if (isStarted) {
             // Already started — just resize
             resize(columns, rows, cellWidthPixels, cellHeightPixels)
             return
         }
+        isStarted = true
         DebugLog.log("SSH_TERM", "start: ${columns}x${rows} cell=${cellWidthPixels}x${cellHeightPixels}")
 
         val termOutput = object : TerminalOutput() {
@@ -84,6 +87,19 @@ class SshTerminalSession(
         )
         session.mEmulator = emulator
         session.mClient = client
+
+        // Route keyboard input to SSH instead of local PTY
+        session.mExternalWriter = TerminalSession.WriteCallback { data, offset, count ->
+            val bytes = data.copyOfRange(offset, offset + count)
+            scope.launch {
+                try {
+                    sshClient.sendRawBytes(bytes)
+                } catch (e: Exception) {
+                    DebugLog.log("SSH_TERM", "mExternalWriter send failed: ${e.message}")
+                }
+            }
+        }
+
         emulatorReady = true
 
         // Resize SSH PTY
