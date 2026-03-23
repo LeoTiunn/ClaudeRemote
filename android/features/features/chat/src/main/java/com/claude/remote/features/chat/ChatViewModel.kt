@@ -2,14 +2,11 @@ package com.claude.remote.features.chat
 
 import android.content.Context
 import android.net.Uri
-import androidx.annotation.NonNull
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSessionManager
-import com.termux.terminal.TerminalSession
-import com.termux.terminal.TerminalSessionClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,48 +29,6 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
-
-    // Native Termux terminal session
-    var sshTerminalSession: SshTerminalSession? = null
-        private set
-
-    private val sessionClient = object : TerminalSessionClient {
-        override fun onTextChanged(@NonNull changedSession: TerminalSession) {
-            sshTerminalSession?.terminalView?.onScreenUpdated()
-        }
-        override fun onTitleChanged(@NonNull changedSession: TerminalSession) {}
-        override fun onSessionFinished(@NonNull finishedSession: TerminalSession) {
-            DebugLog.log("CHAT", "Terminal session finished")
-        }
-        override fun onCopyTextToClipboard(@NonNull session: TerminalSession, text: String) {}
-        override fun onPasteTextFromClipboard(session: TerminalSession?) {}
-        override fun onBell(@NonNull session: TerminalSession) {}
-        override fun onColorsChanged(@NonNull session: TerminalSession) {}
-        override fun onTerminalCursorStateChange(state: Boolean) {}
-        override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
-        override fun getTerminalCursorStyle(): Int? = 0
-        override fun logError(tag: String, message: String) = DebugLog.log(tag, "E: $message")
-        override fun logWarn(tag: String, message: String) = DebugLog.log(tag, "W: $message")
-        override fun logInfo(tag: String, message: String) = DebugLog.log(tag, "I: $message")
-        override fun logDebug(tag: String, message: String) = DebugLog.log(tag, "D: $message")
-        override fun logVerbose(tag: String, message: String) {}
-        override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
-            DebugLog.log(tag, "$message: ${e.message}")
-        }
-        override fun logStackTrace(tag: String, e: Exception) {
-            DebugLog.log(tag, "Exception: ${e.message}")
-        }
-    }
-
-    private fun ensureTerminalSession(): SshTerminalSession {
-        return sshTerminalSession ?: SshTerminalSession(
-            sshClient, sessionClient
-        ).also { sshTerminalSession = it }
-    }
-
-    fun getOrCreateTerminalSession(): SshTerminalSession {
-        return ensureTerminalSession()
-    }
 
     // Raw terminal output for xterm.js WebView
     // DROP_OLDEST prevents emit() from suspending and blocking the shell reader
@@ -119,19 +74,25 @@ class ChatViewModel @Inject constructor(
 
     init {
         // Recover terminal mode if SSH is already attached to tmux
+        // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
         _uiState.update { it.copy(sessionName = sshClient.currentSessionName) }
         if (sshClient.isAttachedToTmux) {
             _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
-            // Native terminal handles its own redraw via SshTerminalSession.start()
+            // Force tmux to redraw so the new WebView gets content
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(500) // Wait for WebView to load
+                try {
+                    // Send refresh sequence: Ctrl+L redraws the screen
+                    sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
+                } catch (_: Exception) {}
+            }
         }
 
-        // Single output collector — routes to terminal emulator or chat mode.
-        // Only ONE collector on outputStream (same architecture as WebView era).
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
                 if (sshClient.isAttachedToTmux) {
-                    // Feed directly to Termux emulator for rendering
-                    sshTerminalSession?.feedOutput(chunk)
+                    _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
+                    _terminalOutput.emit(chunk)
                 } else {
                     handleOutputChunk(chunk)
                 }
@@ -142,6 +103,7 @@ class ChatViewModel @Inject constructor(
             sshClient.connectionState.collect { state ->
                 val wasDisconnected = _uiState.value.connectionState != com.claude.remote.core.ui.components.ConnectionState.CONNECTED
                 _uiState.update { it.copy(connectionState = state, isReconnecting = false) }
+                // Auto-reconnect to session after SSH reconnects
                 if (state == com.claude.remote.core.ui.components.ConnectionState.CONNECTED && wasDisconnected) {
                     val session = sshClient.currentSessionName
                     if (session.isNotEmpty() && !sshClient.isAttachedToTmux) {
@@ -154,8 +116,15 @@ class ChatViewModel @Inject constructor(
 
     fun refreshTerminal() {
         if (!sshClient.isAttachedToTmux) return
+        // Force xterm.js to re-render and send Ctrl+L to tmux for full redraw
+        webViewHolder.webView?.post {
+            webViewHolder.webView?.evaluateJavascript(
+                "if(term){term.refresh(0,term.rows-1);if(lastWidthPx>0&&lastHeightPx>0)setTermSize(lastWidthPx,lastHeightPx)}", null
+            )
+        }
         viewModelScope.launch {
             try {
+                kotlinx.coroutines.delay(300)
                 sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
             } catch (_: Exception) {}
         }
