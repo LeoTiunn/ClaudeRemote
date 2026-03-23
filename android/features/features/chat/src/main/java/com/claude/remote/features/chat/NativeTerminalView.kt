@@ -1,9 +1,11 @@
 package com.claude.remote.features.chat
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -24,11 +26,19 @@ fun NativeTerminalView(
     modifier: Modifier = Modifier
 ) {
     val handler = remember { Handler(Looper.getMainLooper()) }
+    // Mutable holder so onSingleTapUp can reference the view created later
+    val viewHolder = remember { arrayOfNulls<TerminalView>(1) }
 
     val viewClient = remember {
         object : TerminalViewClient {
             override fun onScale(scale: Float): Float = 1.0f
-            override fun onSingleTapUp(e: MotionEvent) {}
+            override fun onSingleTapUp(e: MotionEvent) {
+                viewHolder[0]?.let { view ->
+                    view.requestFocus()
+                    val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                    imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                }
+            }
             override fun shouldBackButtonBeMappedToEscape() = false
             override fun shouldEnforceCharBasedInput() = false
             override fun shouldUseCtrlSpaceWorkaround() = false
@@ -65,6 +75,7 @@ fun NativeTerminalView(
         factory = { ctx ->
             TerminalView(ctx, null).apply {
                 termViewRef = this
+                viewHolder[0] = this
                 setTerminalViewClient(viewClient)
                 // Do NOT call attachSession() here — it would trigger initializeEmulator()
                 // which starts a local /bin/sh process. We need SSH emulator instead.
@@ -88,6 +99,9 @@ fun NativeTerminalView(
                         if (!sshTerminalSession.isStarted) {
                             // First layout: create SSH emulator, then attach to view
                             sshTerminalSession.start(cols, rows, cellW.toInt(), cellH.toInt())
+                        }
+                        // Attach session to this view (handles rotation/recreation)
+                        if (mTermSession == null) {
                             attachSession(sshTerminalSession.session)
                             sshTerminalSession.terminalView = this@apply
                         } else {
