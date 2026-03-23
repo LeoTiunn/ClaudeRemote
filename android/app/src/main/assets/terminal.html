@@ -116,43 +116,83 @@ try {
     }
   };
 
-  // Pause writes while user is scrolled up, flush when they return to bottom
+  // Touch scroll using xterm's scrollLines API
   (function() {
-    var viewport = null;
-    function getViewport() {
-      if (!viewport) viewport = document.querySelector('.xterm-viewport');
-      return viewport;
+    var el = document.getElementById('terminal');
+    var lastY = null;
+    var accDelta = 0;
+    var lineHeight = 16;
+    var momentumId = null;
+    var velocity = 0;
+
+    function getLineHeight() {
+      try {
+        lineHeight = term._core._renderService.dimensions.css.cell.height || 16;
+      } catch(e) {}
+      return lineHeight;
     }
 
-    // Detect user scrolling away from bottom
-    term.onScroll(function() {
-      var vp = getViewport();
-      if (!vp) return;
-      var atBottom = vp.scrollTop + vp.clientHeight >= vp.scrollHeight - 10;
-      if (!atBottom && !isUserScrolling) {
-        isUserScrolling = true;
-        if (flushTimer) clearTimeout(flushTimer);
+    function flushWriteBuffer() {
+      isUserScrolling = false;
+      if (writeBuffer.length > 0) {
+        var combined = writeBuffer.join('');
+        writeBuffer = [];
+        term.write(combined);
       }
-    });
+      term.scrollToBottom();
+    }
 
-    // On touch, check scroll position; on release, schedule flush if near bottom
-    var el = document.getElementById('terminal');
-    el.addEventListener('touchstart', function() {
-      getViewport();
-      isUserScrolling = true;
+    el.addEventListener('touchstart', function(e) {
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      isUserScrolling = true;
+      velocity = 0;
+      accDelta = 0;
+      if (e.touches.length === 1) {
+        lastY = e.touches[0].clientY;
+        getLineHeight();
+      }
     }, { passive: true });
 
+    el.addEventListener('touchmove', function(e) {
+      if (lastY === null || e.touches.length !== 1) return;
+      e.preventDefault();
+      var y = e.touches[0].clientY;
+      var dy = lastY - y;
+      lastY = y;
+      velocity = velocity * 0.3 + dy * 0.7;
+      accDelta += dy;
+      var lines = Math.trunc(accDelta / lineHeight);
+      if (lines !== 0) {
+        term.scrollLines(lines);
+        accDelta -= lines * lineHeight;
+      }
+    }, { passive: false });
+
     el.addEventListener('touchend', function() {
-      flushTimer = setTimeout(function() {
-        isUserScrolling = false;
-        if (writeBuffer.length > 0) {
-          var combined = writeBuffer.join('');
-          writeBuffer = [];
-          term.write(combined);
+      lastY = null;
+      if (Math.abs(velocity) > 3) {
+        // Momentum / fling
+        var v = velocity;
+        var flingAcc = 0;
+        function momentum() {
+          v *= 0.95;
+          if (Math.abs(v) < 1) {
+            flushTimer = setTimeout(flushWriteBuffer, 2000);
+            return;
+          }
+          flingAcc += v;
+          var lines = Math.trunc(flingAcc / lineHeight);
+          if (lines !== 0) {
+            term.scrollLines(lines);
+            flingAcc -= lines * lineHeight;
+          }
+          momentumId = requestAnimationFrame(momentum);
         }
-        term.scrollToBottom();
-      }, 1500);
+        momentumId = requestAnimationFrame(momentum);
+      } else {
+        flushTimer = setTimeout(flushWriteBuffer, 2000);
+      }
     }, { passive: true });
   })();
 
