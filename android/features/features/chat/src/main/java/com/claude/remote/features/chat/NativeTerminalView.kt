@@ -70,7 +70,8 @@ fun NativeTerminalView(
                 // which starts a local /bin/sh process. We need SSH emulator instead.
                 isFocusable = true
                 isFocusableInTouchMode = true
-                setTextSize(14)
+                val density = ctx.resources.displayMetrics.density
+                setTextSize((14 * density).toInt())
                 setBackgroundColor(0xFF1C1917.toInt())
 
                 var resizeRunnable: Runnable? = null
@@ -88,6 +89,7 @@ fun NativeTerminalView(
                             // First layout: create SSH emulator, then attach to view
                             sshTerminalSession.start(cols, rows, cellW.toInt(), cellH.toInt())
                             attachSession(sshTerminalSession.session)
+                            sshTerminalSession.terminalView = this@apply
                         } else {
                             sshTerminalSession.resize(cols, rows, cellW.toInt(), cellH.toInt())
                         }

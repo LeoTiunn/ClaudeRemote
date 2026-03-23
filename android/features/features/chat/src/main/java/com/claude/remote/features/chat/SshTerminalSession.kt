@@ -11,6 +11,7 @@ import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import com.termux.view.TerminalView
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -30,6 +31,8 @@ class SshTerminalSession(
     @Volatile var isStarted = false
         private set
     @Volatile private var emulatorReady = false
+    /** Set by NativeTerminalView after attachSession so we can call onScreenUpdated() */
+    var terminalView: TerminalView? = null
     private val preBuffer = ConcurrentLinkedQueue<ByteArray>()
 
     val session: TerminalSession = TerminalSession(
@@ -137,7 +140,7 @@ class SshTerminalSession(
                     handler.post {
                         try {
                             session.mEmulator?.append(bytes, bytes.size)
-                            session.mClient?.onTextChanged(session)
+                            terminalView?.onScreenUpdated()
                         } catch (e: Exception) {
                             DebugLog.log("SSH_TERM", "append failed: ${e.message}")
                         }
