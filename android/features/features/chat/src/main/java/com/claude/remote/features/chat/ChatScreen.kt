@@ -252,6 +252,7 @@ fun ChatScreen(
                         },
                         modifier = Modifier.fillMaxSize(),
                         update = { proxy ->
+                            proxy.siblingWebView = viewModel.webViewHolder.webView
                             proxy.onTerminalInput = { input ->
                                 DebugLog.log("CHAT_SCREEN", "onTerminalInput callback (update): '${input}' (${input.length} chars)")
                                 viewModel.sendRawEscape(input)

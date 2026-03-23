@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
-import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -54,16 +53,6 @@ fun TerminalView(
 
             val bgColor = if (webViewHolder.isDarkTheme) "#1C1917" else "#FFF8F4"
             wv.setBackgroundColor(android.graphics.Color.parseColor(bgColor))
-
-            wv.setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE ->
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                        v.parent?.requestDisallowInterceptTouchEvent(false)
-                }
-                false
-            }
 
             wv.isFocusable = false
             wv.isFocusableInTouchMode = false
