@@ -104,10 +104,11 @@ class SshClientImpl @Inject constructor() : SshClient {
 
                 val config = Properties()
                 config["StrictHostKeyChecking"] = "no"
+                config["TCPKeepAlive"] = "yes"
                 session.setConfig(config)
                 session.timeout = 0  // No socket timeout — rely on keep-alive
-                session.setServerAliveInterval(15_000)
-                session.setServerAliveCountMax(3)
+                session.setServerAliveInterval(10_000)  // SSH keepalive every 10s
+                session.setServerAliveCountMax(6)  // Allow 60s of missed keepalives
 
                 DebugLog.log("SSH", "Calling session.connect()...")
                 session.connect(15_000)
@@ -235,11 +236,13 @@ class SshClientImpl @Inject constructor() : SshClient {
     private fun attemptReconnect() {
         if (host.isBlank()) return
         scope.launch {
-            for (attempt in 1..5) {
-                DebugLog.log("SSH", "Reconnect attempt $attempt/5")
-                delay(attempt * 3000L)
+            for (attempt in 1..10) {
+                val delayMs = minOf(attempt * 1000L, 5000L)
+                DebugLog.log("SSH", "Reconnect attempt $attempt/10 (delay=${delayMs}ms)")
+                delay(delayMs)
                 try {
                     connect(host, port, username, password)
+                    DebugLog.log("SSH", "Reconnect $attempt succeeded")
                     return@launch
                 } catch (e: Exception) {
                     DebugLog.log("SSH", "Reconnect $attempt failed: ${e.message}")
@@ -334,13 +337,24 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override suspend fun sendRawBytes(data: ByteArray) {
-        DebugLog.log("SSH", "sendRawBytes: ${data.size} bytes [${data.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }}] stream=${shellOutputStream != null}")
         withContext(Dispatchers.IO) {
-            shellOutputStream?.let { stream ->
+            val stream = shellOutputStream
+            if (stream == null) {
+                DebugLog.log("SSH", "sendRawBytes: stream NULL, ${data.size}b dropped")
+                return@withContext
+            }
+            try {
                 stream.write(data)
                 stream.flush()
-                DebugLog.log("SSH", "sendRawBytes: flushed OK")
-            } ?: DebugLog.log("SSH", "sendRawBytes: shellOutputStream is NULL, data dropped!")
+            } catch (e: Exception) {
+                DebugLog.log("SSH", "sendRawBytes FAILED: ${e.message}")
+                // Connection died during write — trigger reconnect
+                shellOutputStream = null
+                if (_connectionState.value == ConnectionState.CONNECTED) {
+                    _connectionState.value = ConnectionState.DISCONNECTED
+                    attemptReconnect()
+                }
+            }
         }
     }
 
