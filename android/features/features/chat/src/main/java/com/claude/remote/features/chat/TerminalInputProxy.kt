@@ -13,10 +13,13 @@ import android.widget.EditText
  * Invisible EditText that captures keyboard input for the terminal.
  * xterm.js textarea is disabled, so this is the ONLY keyboard target.
  *
- * With TYPE_NULL, keyboards may send input via either:
- * - commitText/finishComposingText (swipe, some keyboards)
- * - onKeyDown with KeyEvents (GBoard regular typing)
- * Both paths are handled.
+ * Uses TYPE_CLASS_TEXT to enable all keyboard features:
+ * - Regular typing (commitText per character or word)
+ * - Swipe typing (setComposingText during swipe, commitText on finish)
+ * - Voice input (commitText with recognized text)
+ * - Pinyin/CJK (setComposingText for pinyin, commitText for selected char)
+ *
+ * Composing text is NOT sent to terminal — only committed text is.
  */
 class TerminalInputProxy(context: Context) : EditText(context) {
 
@@ -32,20 +35,27 @@ class TerminalInputProxy(context: Context) : EditText(context) {
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_NULL
+        // TYPE_CLASS_TEXT enables all keyboard features (swipe, voice, pinyin)
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
 
         return object : BaseInputConnection(this, true) {
 
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                // Let composing happen (swipe preview, pinyin input)
+                // Don't send to terminal — wait for commit
+                return super.setComposingText(text, newCursorPosition)
+            }
+
             override fun finishComposingText(): Boolean {
                 super.finishComposingText()
-                sendEditable()
+                sendAndClear()
                 return true
             }
 
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 super.commitText(text, newCursorPosition)
-                sendEditable()
+                sendAndClear()
                 return true
             }
 
@@ -67,7 +77,6 @@ class TerminalInputProxy(context: Context) : EditText(context) {
                             return true
                         }
                         else -> {
-                            // Handle regular character keys sent via InputConnection
                             val c = event.unicodeChar
                             if (c != 0) {
                                 onTerminalInput?.invoke(String(Character.toChars(c)))
@@ -79,7 +88,7 @@ class TerminalInputProxy(context: Context) : EditText(context) {
                 return super.sendKeyEvent(event)
             }
 
-            private fun sendEditable() {
+            private fun sendAndClear() {
                 val content: Editable? = editable
                 val text = content?.toString() ?: ""
                 if (text.isNotEmpty()) {
@@ -90,7 +99,7 @@ class TerminalInputProxy(context: Context) : EditText(context) {
         }
     }
 
-    // GBoard with TYPE_NULL sends regular characters here as KeyEvents
+    // Fallback for keyboards that send KeyEvents directly
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event == null) return super.onKeyDown(keyCode, event)
 
@@ -105,7 +114,6 @@ class TerminalInputProxy(context: Context) : EditText(context) {
             }
         }
 
-        // ACTION_MULTIPLE with KEYCODE_UNKNOWN: batch character input
         if (event.action == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN) {
             val chars = event.characters
             if (!chars.isNullOrEmpty()) {
@@ -114,7 +122,6 @@ class TerminalInputProxy(context: Context) : EditText(context) {
             }
         }
 
-        // Regular character: get unicode from the key event
         val c = event.unicodeChar
         if (c != 0) {
             onTerminalInput?.invoke(String(Character.toChars(c)))
