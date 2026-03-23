@@ -52,8 +52,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import android.view.inputmethod.InputMethodManager
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -228,49 +226,12 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                Box(
+                NativeTerminalView(
+                    sshTerminalSession = viewModel.getOrCreateTerminalSession(),
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                ) {
-                    TerminalView(
-                        outputFlow = viewModel.terminalOutput,
-                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                        onInput = { data -> viewModel.sendRawEscape(data) },
-                        webViewHolder = viewModel.webViewHolder,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    // TerminalInputProxy: small invisible EditText for keyboard input.
-                    // Positioned at bottom with fixed height — NOT a fullMaxSize overlay,
-                    // so it doesn't block WebView scroll events.
-                    AndroidView(
-                        factory = { ctx ->
-                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy factory: creating proxy")
-                            TerminalInputProxy(ctx).apply {
-                                onTerminalInput = { input ->
-                                    DebugLog.log("CHAT_SCREEN", "onTerminalInput callback: '${input}' (${input.length} chars)")
-                                    viewModel.sendRawEscape(input)
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .align(Alignment.BottomCenter),
-                        update = { proxy ->
-                            proxy.onTerminalInput = { input ->
-                                DebugLog.log("CHAT_SCREEN", "onTerminalInput callback (update): '${input}' (${input.length} chars)")
-                                viewModel.sendRawEscape(input)
-                            }
-                            val gotFocus = proxy.requestFocus()
-                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy update: requestFocus=$gotFocus isFocused=${proxy.isFocused} size=${proxy.width}x${proxy.height}")
-                            proxy.post {
-                                val imm = proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                imm?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
-                            }
-                        }
-                    )
-                }
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),

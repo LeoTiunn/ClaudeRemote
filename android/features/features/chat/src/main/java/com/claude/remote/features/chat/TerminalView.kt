@@ -65,8 +65,8 @@ fun TerminalView(
                 false // Let WebView handle the touch for native scroll
             }
 
-            wv.isFocusable = false
-            wv.isFocusableInTouchMode = false
+            wv.isFocusable = true
+            wv.isFocusableInTouchMode = true
 
             wv.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
