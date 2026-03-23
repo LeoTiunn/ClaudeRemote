@@ -11,11 +11,12 @@ import android.widget.EditText
 
 /**
  * Invisible EditText that captures keyboard input for the terminal.
+ * xterm.js textarea is disabled, so this is the ONLY keyboard target.
  *
- * Combines:
- * - EditText: auto-shows keyboard on focus (unlike plain View)
- * - Termux's BaseInputConnection: proper IME handling
- * - xterm.js textarea is disabled, so this is the ONLY keyboard target
+ * With TYPE_NULL, keyboards may send input via either:
+ * - commitText/finishComposingText (swipe, some keyboards)
+ * - onKeyDown with KeyEvents (GBoard regular typing)
+ * Both paths are handled.
  */
 class TerminalInputProxy(context: Context) : EditText(context) {
 
@@ -65,6 +66,14 @@ class TerminalInputProxy(context: Context) : EditText(context) {
                             onTerminalInput?.invoke("\r")
                             return true
                         }
+                        else -> {
+                            // Handle regular character keys sent via InputConnection
+                            val c = event.unicodeChar
+                            if (c != 0) {
+                                onTerminalInput?.invoke(String(Character.toChars(c)))
+                                return true
+                            }
+                        }
                     }
                 }
                 return super.sendKeyEvent(event)
@@ -81,7 +90,10 @@ class TerminalInputProxy(context: Context) : EditText(context) {
         }
     }
 
+    // GBoard with TYPE_NULL sends regular characters here as KeyEvents
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event == null) return super.onKeyDown(keyCode, event)
+
         when (keyCode) {
             KeyEvent.KEYCODE_DEL -> {
                 onTerminalInput?.invoke("\u007f")
@@ -92,6 +104,23 @@ class TerminalInputProxy(context: Context) : EditText(context) {
                 return true
             }
         }
+
+        // ACTION_MULTIPLE with KEYCODE_UNKNOWN: batch character input
+        if (event.action == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN) {
+            val chars = event.characters
+            if (!chars.isNullOrEmpty()) {
+                onTerminalInput?.invoke(chars)
+                return true
+            }
+        }
+
+        // Regular character: get unicode from the key event
+        val c = event.unicodeChar
+        if (c != 0) {
+            onTerminalInput?.invoke(String(Character.toChars(c)))
+            return true
+        }
+
         return super.onKeyDown(keyCode, event)
     }
 }
