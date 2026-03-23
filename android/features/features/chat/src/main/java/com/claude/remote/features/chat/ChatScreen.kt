@@ -257,9 +257,12 @@ fun ChatScreen(
                                 viewModel.sendRawEscape(input)
                             }
                             val gotFocus = proxy.requestFocus()
-                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy update: requestFocus=$gotFocus isFocused=${proxy.isFocused}")
-                            (proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
-                                ?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
+                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy update: requestFocus=$gotFocus isFocused=${proxy.isFocused} size=${proxy.width}x${proxy.height}")
+                            // Post showSoftInput to run after the view is laid out and served by IME
+                            proxy.post {
+                                val imm = proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
+                            }
                         }
                     )
                 }

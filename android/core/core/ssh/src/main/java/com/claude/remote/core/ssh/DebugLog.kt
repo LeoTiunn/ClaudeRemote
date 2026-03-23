@@ -17,6 +17,7 @@ object DebugLog {
         val time = timeFormat.format(Date())
         val entry = "[$time] $tag: $message"
         _logs.value = (_logs.value + entry).takeLast(200)
+        android.util.Log.d("CR_$tag", message)
     }
 
     fun clear() {

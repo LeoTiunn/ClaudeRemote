@@ -30,6 +30,9 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    // Local echo test mode — tests keyboard input pipeline without SSH
+    private var localEchoMode = false
+
     // Raw terminal output for xterm.js WebView
     // DROP_OLDEST prevents emit() from suspending and blocking the shell reader
     private val _terminalOutput = MutableSharedFlow<String>(
@@ -329,9 +332,41 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun enterLocalEchoMode() {
+        localEchoMode = true
+        _uiState.update {
+            it.copy(
+                isTerminalMode = true,
+                isStreaming = true,
+                sessionName = "LOCAL_ECHO_TEST",
+                connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
+            )
+        }
+        viewModelScope.launch {
+            _terminalOutput.emit("\u001b[2J\u001b[H") // Clear screen
+            _terminalOutput.emit("=== LOCAL ECHO TEST MODE ===\r\n")
+            _terminalOutput.emit("Type anything — input is echoed back to terminal.\r\n")
+            _terminalOutput.emit("Tests: regular typing, swipe, voice, pinyin.\r\n")
+            _terminalOutput.emit("$ ")
+        }
+    }
+
     fun sendRawEscape(sequence: String) {
         val bytes = sequence.toByteArray(Charsets.UTF_8)
         DebugLog.log("VIEWMODEL", "sendRawEscape: '${sequence.replace("\r", "\\r").replace("\n", "\\n").replace("\u001b", "\\e").replace("\u007f", "\\x7f")}' (${bytes.size} bytes: ${bytes.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }})")
+
+        if (localEchoMode) {
+            // Echo input back to terminal display
+            viewModelScope.launch {
+                val display = sequence
+                    .replace("\r", "\r\n$ ")
+                    .replace("\u007f", "\u0008 \u0008") // Backspace: move back, space, move back
+                _terminalOutput.emit(display)
+                DebugLog.log("VIEWMODEL", "localEcho: emitted to terminal")
+            }
+            return
+        }
+
         viewModelScope.launch {
             try {
                 sshClient.sendRawBytes(bytes)

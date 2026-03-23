@@ -32,7 +32,8 @@ class TerminalInputProxy(context: Context) : EditText(context) {
         alpha = 0f
         setBackgroundColor(0)
         isCursorVisible = false
-        height = 1
+        // Do NOT set height = 1 — let Compose Modifier control the size.
+        // A zero-size view causes "not served" errors from InputMethodManager.
     }
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
