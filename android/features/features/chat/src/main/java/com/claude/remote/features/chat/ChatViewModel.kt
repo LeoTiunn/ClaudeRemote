@@ -356,6 +356,9 @@ class ChatViewModel @Inject constructor(
         val bytes = sequence.toByteArray(Charsets.UTF_8)
         DebugLog.log("VIEWMODEL", "sendRawEscape: '${sequence.replace("\r", "\\r").replace("\n", "\\n").replace("\u001b", "\\e").replace("\u007f", "\\x7f")}' (${bytes.size} bytes: ${bytes.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }})")
 
+        // Flush write buffer so typed characters echo immediately
+        webViewHolder.flushOnInput()
+
         if (localEchoMode) {
             // Echo input back to terminal display
             viewModelScope.launch {

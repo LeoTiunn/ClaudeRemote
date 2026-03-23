@@ -158,6 +158,14 @@ try {
       if (isAtBottom()) term.scrollToBottom();
     }
 
+    // Expose globally so Kotlin can call on user input
+    window.flushOnInput = function() {
+      if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+      if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }
+      flushWriteBuffer();
+      term.scrollToBottom();
+    };
+
     el.addEventListener('touchstart', function(e) {
       getViewport();
       if (momentumId) { cancelAnimationFrame(momentumId); momentumId = null; }

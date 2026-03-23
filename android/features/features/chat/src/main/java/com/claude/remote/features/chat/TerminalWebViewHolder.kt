@@ -38,6 +38,13 @@ class TerminalWebViewHolder @Inject constructor() {
         isInitialized = true
     }
 
+    /** Flush write buffer and scroll to bottom — call when user types */
+    fun flushOnInput() {
+        webView?.post {
+            webView?.evaluateJavascript("if(window.flushOnInput)flushOnInput()", null)
+        }
+    }
+
     fun detachFromParent() {
         (webView?.parent as? ViewGroup)?.removeView(webView)
     }
