@@ -12,12 +12,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
- * Bridges our SshClient I/O to Termux's TerminalSession/TerminalEmulator.
+ * Bridges SshClient I/O to Termux's TerminalSession/TerminalEmulator.
  *
- * - SSH output bytes → TerminalEmulator (for parsing/rendering)
- * - User keyboard input (from TerminalView) → SSH stdin via TerminalOutput.write()
+ * Starts collecting SSH output immediately on creation, buffering until
+ * the emulator is initialized (after the view lays out and provides cols/rows).
  */
 class SshTerminalSession(
     private val sshClient: SshClient,
@@ -26,18 +27,28 @@ class SshTerminalSession(
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var collectJob: Job? = null
+    @Volatile private var emulatorReady = false
+    private val preBuffer = ConcurrentLinkedQueue<ByteArray>()
 
-    // Dummy session — we only use it as a container for the emulator
     val session: TerminalSession = TerminalSession(
         "/bin/sh", "/", arrayOf(), arrayOf(),
         null, client
     )
 
-    /** Call from main thread after view has measured. */
+    init {
+        // Start collecting SSH output immediately — buffer until emulator is ready
+        startCollecting()
+    }
+
+    /** Call from main thread after view has measured and knows cols/rows. */
     fun start(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
+        if (emulatorReady) {
+            // Already started — just resize
+            resize(columns, rows, cellWidthPixels, cellHeightPixels)
+            return
+        }
         DebugLog.log("SSH_TERM", "start: ${columns}x${rows} cell=${cellWidthPixels}x${cellHeightPixels}")
 
-        // Create emulator that sends keyboard/output data to SSH
         val termOutput = object : TerminalOutput() {
             override fun write(data: ByteArray, offset: Int, count: Int) {
                 val bytes = data.copyOfRange(offset, offset + count)
@@ -53,19 +64,15 @@ class SshTerminalSession(
             override fun titleChanged(oldTitle: String?, newTitle: String?) {
                 handler.post { client.onTitleChanged(session) }
             }
-
             override fun onCopyTextToClipboard(text: String?) {
                 handler.post { client.onCopyTextToClipboard(session, text ?: "") }
             }
-
             override fun onPasteTextFromClipboard() {
                 handler.post { client.onPasteTextFromClipboard(session) }
             }
-
             override fun onBell() {
                 handler.post { client.onBell(session) }
             }
-
             override fun onColorsChanged() {
                 handler.post { client.onColorsChanged(session) }
             }
@@ -73,19 +80,36 @@ class SshTerminalSession(
 
         val emulator = TerminalEmulator(
             termOutput, columns, rows, cellWidthPixels, cellHeightPixels,
-            10000, // transcriptRows (scrollback)
-            client
+            10000, client
         )
-
-        // Set emulator on session (we made mEmulator public)
         session.mEmulator = emulator
         session.mClient = client
+        emulatorReady = true
 
         // Resize SSH PTY
         sshClient.resizePty(columns, rows)
 
-        // Start collecting SSH output → feed to emulator
-        startCollecting()
+        // Replay buffered output
+        val buffered = mutableListOf<ByteArray>()
+        while (true) {
+            val chunk = preBuffer.poll() ?: break
+            buffered.add(chunk)
+        }
+        if (buffered.isNotEmpty()) {
+            DebugLog.log("SSH_TERM", "Replaying ${buffered.size} buffered chunks")
+            for (bytes in buffered) {
+                emulator.append(bytes, bytes.size)
+            }
+            client.onTextChanged(session)
+        }
+
+        // Send Ctrl+L to force tmux redraw with correct size
+        scope.launch {
+            kotlinx.coroutines.delay(200)
+            try {
+                sshClient.sendRawBytes(byteArrayOf(0x0C))
+            } catch (_: Exception) {}
+        }
     }
 
     private fun startCollecting() {
@@ -93,13 +117,18 @@ class SshTerminalSession(
         collectJob = scope.launch {
             sshClient.outputStream.collect { chunk ->
                 val bytes = chunk.toByteArray(StandardCharsets.UTF_8)
-                handler.post {
-                    try {
-                        session.mEmulator?.append(bytes, bytes.size)
-                        session.mClient?.onTextChanged(session)
-                    } catch (e: Exception) {
-                        DebugLog.log("SSH_TERM", "append failed: ${e.message}")
+                if (emulatorReady) {
+                    handler.post {
+                        try {
+                            session.mEmulator?.append(bytes, bytes.size)
+                            session.mClient?.onTextChanged(session)
+                        } catch (e: Exception) {
+                            DebugLog.log("SSH_TERM", "append failed: ${e.message}")
+                        }
                     }
+                } else {
+                    // Buffer until emulator is ready
+                    preBuffer.add(bytes)
                 }
             }
         }
