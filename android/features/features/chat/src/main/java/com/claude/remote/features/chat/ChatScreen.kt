@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -241,14 +242,22 @@ fun ChatScreen(
                     )
                     AndroidView(
                         factory = { ctx ->
+                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy factory: creating proxy")
                             TerminalInputProxy(ctx).apply {
-                                onTerminalInput = { viewModel.sendRawEscape(it) }
+                                onTerminalInput = { input ->
+                                    DebugLog.log("CHAT_SCREEN", "onTerminalInput callback: '${input}' (${input.length} chars, bytes=${input.toByteArray(Charsets.UTF_8).joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }})")
+                                    viewModel.sendRawEscape(input)
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
                         update = { proxy ->
-                            proxy.onTerminalInput = { viewModel.sendRawEscape(it) }
-                            proxy.requestFocus()
+                            proxy.onTerminalInput = { input ->
+                                DebugLog.log("CHAT_SCREEN", "onTerminalInput callback (update): '${input}' (${input.length} chars)")
+                                viewModel.sendRawEscape(input)
+                            }
+                            val gotFocus = proxy.requestFocus()
+                            DebugLog.log("CHAT_SCREEN", "TerminalInputProxy update: requestFocus=$gotFocus isFocused=${proxy.isFocused}")
                             (proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
                                 ?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
                         }

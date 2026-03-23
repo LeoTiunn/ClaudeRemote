@@ -330,10 +330,15 @@ class ChatViewModel @Inject constructor(
     }
 
     fun sendRawEscape(sequence: String) {
+        val bytes = sequence.toByteArray(Charsets.UTF_8)
+        DebugLog.log("VIEWMODEL", "sendRawEscape: '${sequence.replace("\r", "\\r").replace("\n", "\\n").replace("\u001b", "\\e").replace("\u007f", "\\x7f")}' (${bytes.size} bytes: ${bytes.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }})")
         viewModelScope.launch {
             try {
-                sshClient.sendRawBytes(sequence.toByteArray(Charsets.UTF_8))
-            } catch (_: Exception) {}
+                sshClient.sendRawBytes(bytes)
+                DebugLog.log("VIEWMODEL", "sendRawEscape: sent successfully")
+            } catch (e: Exception) {
+                DebugLog.log("VIEWMODEL", "sendRawEscape: FAILED: ${e.message}")
+            }
         }
     }
 

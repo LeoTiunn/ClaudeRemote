@@ -334,11 +334,13 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override suspend fun sendRawBytes(data: ByteArray) {
+        DebugLog.log("SSH", "sendRawBytes: ${data.size} bytes [${data.joinToString(",") { "0x${(it.toInt() and 0xFF).toString(16).padStart(2, '0')}" }}] stream=${shellOutputStream != null}")
         withContext(Dispatchers.IO) {
             shellOutputStream?.let { stream ->
                 stream.write(data)
                 stream.flush()
-            }
+                DebugLog.log("SSH", "sendRawBytes: flushed OK")
+            } ?: DebugLog.log("SSH", "sendRawBytes: shellOutputStream is NULL, data dropped!")
         }
     }
 
