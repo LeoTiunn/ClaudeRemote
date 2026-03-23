@@ -5,7 +5,6 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.KeyEvent
-import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import com.claude.remote.core.ssh.DebugLog
@@ -14,21 +13,18 @@ import com.claude.remote.core.ssh.DebugLog
  * Native Android EditText that captures all keyboard input and forwards
  * it to the terminal via SSH. Bypasses WebView's flaky InputConnection.
  *
- * Strategy:
- * - TYPE_CLASS_TEXT allows composing (swipe typing preview)
- * - TextWatcher detects committed vs composing text using span inspection
- * - Only committed text gets sent to the terminal
- * - Backspace handled via onKeyDown
+ * VISIBLE_PASSWORD disables composing — kills swipe typing but guarantees
+ * every keystroke goes straight to the terminal with zero duplication.
  */
 class TerminalInputProxy(context: Context) : EditText(context) {
 
     var onTerminalInput: ((String) -> Unit)? = null
     private var ignoreNextChange = false
-    private var lastComposingLength = 0
 
     init {
-        // TYPE_CLASS_TEXT allows composing for swipe typing
-        inputType = InputType.TYPE_CLASS_TEXT
+        inputType = InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
         imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or
             EditorInfo.IME_FLAG_NO_FULLSCREEN
         // Make invisible but still focusable for keyboard
@@ -43,48 +39,21 @@ class TerminalInputProxy(context: Context) : EditText(context) {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 if (ignoreNextChange || s == null) return
-
-                // Check if text is currently being composed (swipe in progress)
-                val editable = s as? Editable
-                val composingStart = if (editable != null)
-                    BaseInputConnection.getComposingSpanStart(editable) else -1
-                val composingEnd = if (editable != null)
-                    BaseInputConnection.getComposingSpanEnd(editable) else -1
-                val isComposing = composingStart >= 0 && composingEnd > composingStart
-
-                if (isComposing) {
-                    // Swipe in progress — don't send yet, track length
-                    lastComposingLength = s.length
-                    return
-                }
-
-                // Text is committed (not composing)
-                if (count > 0 && s.isNotEmpty()) {
+                if (count > 0) {
                     val newText = s.subSequence(start, start + count).toString()
-                    DebugLog.log("INPUT_PROXY", "Committed: '${newText.take(50)}' (${newText.length} chars)")
+                    DebugLog.log("INPUT_PROXY", "Sending: '${newText.take(50)}' (${newText.length} chars)")
                     onTerminalInput?.invoke(newText)
                 }
             }
-
             override fun afterTextChanged(s: Editable?) {
-                if (ignoreNextChange || s == null || s.isEmpty()) return
-
-                // Check if still composing
-                val composingStart = BaseInputConnection.getComposingSpanStart(s)
-                val composingEnd = BaseInputConnection.getComposingSpanEnd(s)
-                val isComposing = composingStart >= 0 && composingEnd > composingStart
-
-                if (!isComposing) {
-                    // Composing done or regular input — clear the field
+                if (!ignoreNextChange && s != null && s.isNotEmpty()) {
                     ignoreNextChange = true
-                    lastComposingLength = 0
                     s.clear()
                     ignoreNextChange = false
                 }
             }
         })
 
-        // Handle Enter from IME action
         setOnEditorActionListener { _, _, _ ->
             onTerminalInput?.invoke("\r")
             true
