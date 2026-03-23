@@ -75,9 +75,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
-import android.view.inputmethod.InputMethodManager
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -227,44 +225,15 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                Box(
+                TerminalView(
+                    outputFlow = viewModel.terminalOutput,
+                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                    onInput = { data -> viewModel.sendRawEscape(data) },
+                    webViewHolder = viewModel.webViewHolder,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                ) {
-                    TerminalView(
-                        outputFlow = viewModel.terminalOutput,
-                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                        onInput = { data -> viewModel.sendRawEscape(data) },
-                        webViewHolder = viewModel.webViewHolder,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Invisible native EditText overlay captures all keyboard input.
-                    // Tapping anywhere on the terminal focuses this EditText,
-                    // which opens the keyboard and sends input directly to SSH.
-                    AndroidView(
-                        factory = { ctx ->
-                            TerminalInputProxy(ctx).apply {
-                                onTerminalInput = { text ->
-                                    viewModel.sendRawEscape(text)
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        update = { proxy ->
-                            proxy.onTerminalInput = { text ->
-                                viewModel.sendRawEscape(text)
-                            }
-                            // Request focus and show keyboard
-                            proxy.requestFocus()
-                            val imm = proxy.context.getSystemService(
-                                android.content.Context.INPUT_METHOD_SERVICE
-                            ) as? InputMethodManager
-                            imm?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
-                        }
-                    )
-                }
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
