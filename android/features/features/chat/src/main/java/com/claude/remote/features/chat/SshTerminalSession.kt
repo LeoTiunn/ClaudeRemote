@@ -55,16 +55,13 @@ class SshTerminalSession(
         isStarted = true
         DebugLog.log("SSH_TERM", "start: ${columns}x${rows} cell=${cellWidthPixels}x${cellHeightPixels}")
 
+        // Display-only TerminalOutput: emulator processes incoming data for rendering
+        // but responses (DSR, cursor reports, etc.) are NOT sent back to SSH.
+        // This matches the old xterm.js behavior where the terminal was display-only.
+        // User input goes through TerminalInputProxy → sendRawEscape → SSH directly.
         val termOutput = object : TerminalOutput() {
             override fun write(data: ByteArray, offset: Int, count: Int) {
-                val bytes = data.copyOfRange(offset, offset + count)
-                scope.launch {
-                    try {
-                        sshClient.sendRawBytes(bytes)
-                    } catch (e: Exception) {
-                        DebugLog.log("SSH_TERM", "send failed: ${e.message}")
-                    }
-                }
+                // No-op: don't send emulator responses back to SSH
             }
 
             override fun titleChanged(oldTitle: String?, newTitle: String?) {
@@ -91,17 +88,9 @@ class SshTerminalSession(
         session.mEmulator = emulator
         session.mClient = client
 
-        // Route keyboard input to SSH instead of local PTY
-        session.mExternalWriter = TerminalSession.WriteCallback { data, offset, count ->
-            val bytes = data.copyOfRange(offset, offset + count)
-            scope.launch {
-                try {
-                    sshClient.sendRawBytes(bytes)
-                } catch (e: Exception) {
-                    DebugLog.log("SSH_TERM", "mExternalWriter send failed: ${e.message}")
-                }
-            }
-        }
+        // Block session.write() from going anywhere — no local PTY, no SSH.
+        // All user input goes through TerminalInputProxy → sendRawEscape → SSH.
+        session.mExternalWriter = TerminalSession.WriteCallback { _, _, _ -> }
 
         emulatorReady = true
 
