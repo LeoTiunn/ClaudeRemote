@@ -2,11 +2,14 @@ package com.claude.remote.features.chat
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.NonNull
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSessionManager
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -29,6 +32,48 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    // Native Termux terminal session
+    var sshTerminalSession: SshTerminalSession? = null
+        private set
+
+    private val sessionClient = object : TerminalSessionClient {
+        override fun onTextChanged(@NonNull changedSession: TerminalSession) {
+            sshTerminalSession?.terminalView?.onScreenUpdated()
+        }
+        override fun onTitleChanged(@NonNull changedSession: TerminalSession) {}
+        override fun onSessionFinished(@NonNull finishedSession: TerminalSession) {
+            DebugLog.log("CHAT", "Terminal session finished")
+        }
+        override fun onCopyTextToClipboard(@NonNull session: TerminalSession, text: String) {}
+        override fun onPasteTextFromClipboard(session: TerminalSession?) {}
+        override fun onBell(@NonNull session: TerminalSession) {}
+        override fun onColorsChanged(@NonNull session: TerminalSession) {}
+        override fun onTerminalCursorStateChange(state: Boolean) {}
+        override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
+        override fun getTerminalCursorStyle(): Int? = 0
+        override fun logError(tag: String, message: String) = DebugLog.log(tag, "E: $message")
+        override fun logWarn(tag: String, message: String) = DebugLog.log(tag, "W: $message")
+        override fun logInfo(tag: String, message: String) = DebugLog.log(tag, "I: $message")
+        override fun logDebug(tag: String, message: String) = DebugLog.log(tag, "D: $message")
+        override fun logVerbose(tag: String, message: String) {}
+        override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+            DebugLog.log(tag, "$message: ${e.message}")
+        }
+        override fun logStackTrace(tag: String, e: Exception) {
+            DebugLog.log(tag, "Exception: ${e.message}")
+        }
+    }
+
+    private fun ensureTerminalSession(): SshTerminalSession {
+        return sshTerminalSession ?: SshTerminalSession(
+            sshClient, viewModelScope, sessionClient
+        ).also { sshTerminalSession = it }
+    }
+
+    fun getOrCreateTerminalSession(): SshTerminalSession {
+        return ensureTerminalSession()
+    }
 
     // Raw terminal output for xterm.js WebView
     // DROP_OLDEST prevents emit() from suspending and blocking the shell reader

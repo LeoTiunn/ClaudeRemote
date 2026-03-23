@@ -229,54 +229,13 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                var inputProxy by remember { mutableStateOf<TerminalInputProxy?>(null) }
-
-                fun focusProxy() {
-                    inputProxy?.let { proxy ->
-                        proxy.requestFocus()
-                        val imm = proxy.context.getSystemService(
-                            android.content.Context.INPUT_METHOD_SERVICE
-                        ) as? android.view.inputmethod.InputMethodManager
-                        imm?.showSoftInput(proxy, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-                    }
-                }
-
-                Box(
+                NativeTerminalView(
+                    sshTerminalSession = viewModel.getOrCreateTerminalSession(),
+                    onTerminalInput = { data -> viewModel.sendRawEscape(data) },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                ) {
-                    TerminalView(
-                        outputFlow = viewModel.terminalOutput,
-                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                        onInput = { data -> viewModel.sendRawEscape(data) },
-                        onTap = { focusProxy() },
-                        webViewHolder = viewModel.webViewHolder,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Invisible EditText for keyboard input (swipe, Chinese IME, etc.)
-                    AndroidView(
-                        factory = { ctx ->
-                            TerminalInputProxy(ctx).apply {
-                                onTerminalInput = { data ->
-                                    DebugLog.log("INPUT_PROXY", "-> sendRawEscape: '${data.take(20)}'")
-                                    viewModel.sendRawEscape(data)
-                                }
-                            }.also { inputProxy = it }
-                        },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(1.dp)
-                    )
-                }
-
-                // Auto-focus proxy when entering terminal mode
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(500)
-                    focusProxy()
-                }
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
