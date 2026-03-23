@@ -197,6 +197,11 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
+            Text(
+                text = "Current version: v${updateState.currentVersion}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -241,6 +246,23 @@ fun SettingsScreen(
                             Text("Check for Updates")
                         }
                     }
+                }
+            }
+
+            if (updateState.hasPreviousVersion) {
+                OutlinedButton(
+                    onClick = { viewModel.rollback() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(
+                        if (updateState.previousVersion != null)
+                            "Rollback to v${updateState.previousVersion}"
+                        else
+                            "Rollback to Previous Version"
+                    )
                 }
             }
 

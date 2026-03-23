@@ -64,6 +64,7 @@ fun TerminalView(
                     MotionEvent.ACTION_DOWN -> {
                         downX = event.x
                         downY = event.y
+                        // Let WebView handle all touch events (scrolling happens inside xterm.js viewport)
                         v.parent?.requestDisallowInterceptTouchEvent(true)
                     }
                     MotionEvent.ACTION_UP -> {
@@ -74,8 +75,6 @@ fun TerminalView(
                         }
                         v.parent?.requestDisallowInterceptTouchEvent(false)
                     }
-                    MotionEvent.ACTION_MOVE ->
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
                     MotionEvent.ACTION_CANCEL ->
                         v.parent?.requestDisallowInterceptTouchEvent(false)
                 }

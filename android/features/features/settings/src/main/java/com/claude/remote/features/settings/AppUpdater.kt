@@ -29,7 +29,10 @@ data class UpdateState(
     val latestVersion: String? = null,
     val downloadUrl: String? = null,
     val error: String? = null,
-    val hasUpdate: Boolean = false
+    val hasUpdate: Boolean = false,
+    val currentVersion: String = "",
+    val hasPreviousVersion: Boolean = false,
+    val previousVersion: String? = null
 )
 
 @Singleton
@@ -40,9 +43,17 @@ class AppUpdater @Inject constructor(
         private const val GITHUB_OWNER = "LeoTiunn"
         private const val GITHUB_REPO = "ClaudeRemote"
         private const val APK_NAME = "claude-remote.apk"
+        private const val BACKUP_APK_NAME = "claude-remote-previous.apk"
+        private const val PREFS_NAME = "app_updater"
+        private const val KEY_PREVIOUS_VERSION = "previous_version"
     }
 
-    private val _state = MutableStateFlow(UpdateState())
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(UpdateState(
+        currentVersion = getCurrentVersion(),
+        hasPreviousVersion = getBackupFile().exists(),
+        previousVersion = prefs.getString(KEY_PREVIOUS_VERSION, null)
+    ))
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
     private fun getCurrentVersion(): String {
@@ -94,13 +105,42 @@ class AppUpdater @Inject constructor(
         }
     }
 
+    private fun getBackupFile(): File {
+        return File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), BACKUP_APK_NAME)
+    }
+
+    private fun backupCurrentApk() {
+        try {
+            val currentApkPath = context.packageManager
+                .getApplicationInfo(context.packageName, 0).sourceDir
+            val src = File(currentApkPath)
+            val dst = getBackupFile()
+            src.copyTo(dst, overwrite = true)
+            prefs.edit().putString(KEY_PREVIOUS_VERSION, getCurrentVersion()).apply()
+        } catch (e: Exception) {
+            // Non-fatal — update still proceeds
+        }
+    }
+
+    fun rollback() {
+        val backup = getBackupFile()
+        if (!backup.exists()) {
+            _state.value = _state.value.copy(error = "No previous version to rollback to")
+            return
+        }
+        installApkFile(backup)
+    }
+
     fun downloadAndInstall() {
         val url = _state.value.downloadUrl ?: return
         _state.value = _state.value.copy(isDownloading = true, error = null)
 
-        // Clean up old APKs
+        // Backup current APK before updating
+        backupCurrentApk()
+
+        // Clean up old update APKs (not backup)
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        dir?.listFiles()?.filter { it.name.endsWith(".apk") }?.forEach { it.delete() }
+        dir?.listFiles()?.filter { it.name == APK_NAME }?.forEach { it.delete() }
 
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("Claude Remote Update")
@@ -134,8 +174,12 @@ class AppUpdater @Inject constructor(
             context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
             APK_NAME
         )
+        installApkFile(file)
+    }
+
+    private fun installApkFile(file: File) {
         if (!file.exists()) {
-            _state.value = _state.value.copy(error = "Download file not found")
+            _state.value = _state.value.copy(error = "APK file not found")
             return
         }
 

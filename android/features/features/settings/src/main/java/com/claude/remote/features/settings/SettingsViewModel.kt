@@ -88,4 +88,8 @@ class SettingsViewModel @Inject constructor(
     fun downloadAndInstallUpdate() {
         appUpdater.downloadAndInstall()
     }
+
+    fun rollback() {
+        appUpdater.rollback()
+    }
 }
