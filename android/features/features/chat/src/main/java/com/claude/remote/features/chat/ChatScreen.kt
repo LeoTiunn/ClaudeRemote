@@ -39,8 +39,6 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -49,14 +47,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.text.input.ImeAction
+import android.view.inputmethod.InputMethodManager
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -230,15 +227,33 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                TerminalView(
-                    outputFlow = viewModel.terminalOutput,
-                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                    onInput = { data -> viewModel.sendRawEscape(data) },
-                    webViewHolder = viewModel.webViewHolder,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                )
+                ) {
+                    TerminalView(
+                        outputFlow = viewModel.terminalOutput,
+                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                        onInput = { data -> viewModel.sendRawEscape(data) },
+                        webViewHolder = viewModel.webViewHolder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    AndroidView(
+                        factory = { ctx ->
+                            TerminalInputProxy(ctx).apply {
+                                onTerminalInput = { viewModel.sendRawEscape(it) }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { proxy ->
+                            proxy.onTerminalInput = { viewModel.sendRawEscape(it) }
+                            proxy.requestFocus()
+                            (proxy.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                                ?.showSoftInput(proxy, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -265,39 +280,6 @@ fun ChatScreen(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 thickness = 0.5.dp
             )
-
-            if (uiState.isTerminalMode) {
-                var termInput by remember { mutableStateOf("") }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = termInput,
-                        onValueChange = { termInput = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Type here...", fontSize = 14.sp) },
-                        textStyle = TextStyle(fontSize = 14.sp, fontFamily = FontFamily.Monospace),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (termInput.isNotEmpty()) {
-                                    viewModel.sendRawEscape(termInput)
-                                    viewModel.sendRawEscape("\r")
-                                    termInput = ""
-                                }
-                            }
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    )
-                }
-            }
 
             TerminalKeysBar(
                 onKey = { seq -> viewModel.sendRawEscape(seq) },
