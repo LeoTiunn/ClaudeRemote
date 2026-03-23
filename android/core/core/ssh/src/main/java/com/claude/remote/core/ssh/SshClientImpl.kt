@@ -51,11 +51,6 @@ class SshClientImpl @Inject constructor() : SshClient {
     @Volatile override var isAttachedToTmux: Boolean = false
     @Volatile override var currentSessionName: String = ""
 
-    // Serialises all writes to shellOutputStream so concurrent coroutines
-    // (emulator responses, user input, mExternalWriter) don't interleave bytes
-    // and corrupt SSH channel framing.
-    private val writeMutex = Mutex()
-
     // For shell-based command execution
     private val execMutex = Mutex()
     @Volatile private var pendingCommand: PendingCommand? = null
@@ -294,14 +289,12 @@ class SshClientImpl @Inject constructor() : SshClient {
 
             DebugLog.log("EXEC", "Sending via shell with marker $marker")
 
-            writeMutex.withLock {
-                withContext(Dispatchers.IO) {
-                    shellOutputStream?.let { stream ->
-                        val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
-                        stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
-                        stream.flush()
-                    } ?: throw IllegalStateException("Shell disconnected")
-                }
+            withContext(Dispatchers.IO) {
+                shellOutputStream?.let { stream ->
+                    val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
+                    stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                } ?: throw IllegalStateException("Shell disconnected")
             }
 
             // Wait for result with timeout
@@ -342,28 +335,24 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     override suspend fun sendRawBytes(data: ByteArray) {
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                shellOutputStream?.let { stream ->
-                    stream.write(data)
-                    stream.flush()
-                }
+        withContext(Dispatchers.IO) {
+            shellOutputStream?.let { stream ->
+                stream.write(data)
+                stream.flush()
             }
         }
     }
 
     override suspend fun sendInput(input: String) {
         DebugLog.log("INPUT", "Sending: ${input.take(50)}")
-        writeMutex.withLock {
-            withContext(Dispatchers.IO) {
-                shellOutputStream?.let { stream ->
-                    // Use \r (carriage return) for Enter — required when attached to tmux PTY
-                    val suffix = if (isAttachedToTmux) "\r" else "\n"
-                    stream.write("$input$suffix".toByteArray(Charsets.UTF_8))
-                    stream.flush()
-                    DebugLog.log("INPUT", "Sent OK (suffix=${if (isAttachedToTmux) "CR" else "LF"})")
-                } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
-            }
+        withContext(Dispatchers.IO) {
+            shellOutputStream?.let { stream ->
+                // Use \r (carriage return) for Enter — required when attached to tmux PTY
+                val suffix = if (isAttachedToTmux) "\r" else "\n"
+                stream.write("$input$suffix".toByteArray(Charsets.UTF_8))
+                stream.flush()
+                DebugLog.log("INPUT", "Sent OK (suffix=${if (isAttachedToTmux) "CR" else "LF"})")
+            } ?: DebugLog.log("INPUT", "ERROR: shellOutputStream is null")
         }
     }
 }
