@@ -262,15 +262,15 @@ fun ChatScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.Bottom
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     androidx.compose.material3.OutlinedTextField(
                         value = termInput,
                         onValueChange = { termInput = it },
-                        placeholder = { Text("Type here...", fontSize = 13.sp) },
+                        placeholder = { Text("Type here...", fontSize = 15.sp) },
                         maxLines = 4,
-                        textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                        textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester),
