@@ -254,34 +254,39 @@ fun ChatScreen(
                     keyboardController?.show()
                 }
 
-                androidx.compose.material3.TextField(
-                    value = termInput,
-                    onValueChange = { termInput = it },
-                    placeholder = { Text("Type here...", fontSize = 13.sp) },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .focusRequester(focusRequester),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSend = { sendAction() }
-                    ),
-                    trailingIcon = {
-                        if (termInput.isNotEmpty()) {
-                            IconButton(onClick = { sendAction() }) {
-                                Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = "Send",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    tonalElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    androidx.compose.material3.TextField(
+                        value = termInput,
+                        onValueChange = { termInput = it },
+                        placeholder = { Text("Type here...", fontSize = 13.sp) },
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onSend = { sendAction() }
+                        ),
+                        trailingIcon = {
+                            if (termInput.isNotEmpty()) {
+                                IconButton(onClick = { sendAction() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Send",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
