@@ -13,8 +13,8 @@ android {
         applicationId = "com.claude.remote.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 201
-        versionName = "9.0.1"
+        versionCode = 202
+        versionName = "9.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

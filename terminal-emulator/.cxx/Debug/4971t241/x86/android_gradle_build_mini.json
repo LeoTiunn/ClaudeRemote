@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/src/main/jni/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/opt/homebrew/share/android-commandlinetools/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/opt/homebrew/share/android-commandlinetools/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "termux::@6890427a1f51a3e7e1df": {
+      "artifactName": "termux",
+      "abi": "x86",
+      "output": "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/build/intermediates/cxx/Debug/4971t241/obj/x86/libtermux.so",
+      "runtimeFiles": []
+    }
+  }
+}

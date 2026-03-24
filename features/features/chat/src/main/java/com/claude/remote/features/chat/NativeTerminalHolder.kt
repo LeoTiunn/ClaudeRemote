@@ -10,7 +10,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.File
+
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,18 +36,12 @@ class NativeTerminalHolder @Inject constructor(
     private fun spToPx(sp: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics).toInt()
 
-    /** Extract dbclient binary from assets to app files dir on first run. */
+    /** Get dbclient path from native libs directory (packaged as libdbclient.so). */
     fun getDbclientPath(): String {
-        val file = File(context.filesDir, "dbclient")
-        if (!file.exists() || file.length() == 0L) {
-            DebugLog.log("TERM", "Extracting dbclient binary...")
-            context.assets.open("dbclient").use { input ->
-                file.outputStream().use { output -> input.copyTo(output) }
-            }
-            file.setExecutable(true)
-            DebugLog.log("TERM", "dbclient extracted to ${file.absolutePath}")
-        }
-        return file.absolutePath
+        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+        val path = "$nativeLibDir/libdbclient.so"
+        DebugLog.log("TERM", "dbclient path: $path")
+        return path
     }
 
     private val sessionClient = object : TerminalSessionClient {

@@ -1,0 +1,19 @@
+                        -H/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/src/main/jni
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=28
+-DANDROID_PLATFORM=android-28
+-DANDROID_ABI=x86
+-DCMAKE_ANDROID_ARCH_ABI=x86
+-DANDROID_NDK=/opt/homebrew/share/android-commandlinetools/ndk/25.1.8937393
+-DCMAKE_ANDROID_NDK=/opt/homebrew/share/android-commandlinetools/ndk/25.1.8937393
+-DCMAKE_TOOLCHAIN_FILE=/opt/homebrew/share/android-commandlinetools/ndk/25.1.8937393/build/cmake/android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=/opt/homebrew/share/android-commandlinetools/cmake/3.22.1/bin/ninja
+-DCMAKE_C_FLAGS=-std=c11
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/build/intermediates/cxx/Debug/4971t241/obj/x86
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/build/intermediates/cxx/Debug/4971t241/obj/x86
+-DCMAKE_BUILD_TYPE=Debug
+-B/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/x86
+-GNinja
+                        Build command args: []
+                        Version: 2

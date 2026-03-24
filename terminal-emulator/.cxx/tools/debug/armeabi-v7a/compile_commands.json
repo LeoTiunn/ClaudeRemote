@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/armeabi-v7a",
+  "command": "/opt/homebrew/share/android-commandlinetools/ndk/25.1.8937393/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang --target=armv7-none-linux-androideabi28 --sysroot=/opt/homebrew/share/android-commandlinetools/ndk/25.1.8937393/toolchains/llvm/prebuilt/darwin-x86_64/sysroot -Dtermux_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -march=armv7-a -mthumb -Wformat -Werror=format-security -std=c11 -fno-limit-debug-info  -fPIC -o CMakeFiles/termux.dir/termux.c.o -c /Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/src/main/jni/termux.c",
+  "file": "/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/src/main/jni/termux.c"
+}
+]
