@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -235,32 +236,40 @@ fun ChatScreen(
                         .fillMaxWidth()
                 )
 
-                // Text input — auto-sends when composing ends (no Send button needed)
-                var tfv by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue()) }
-                var lastSentLen by remember { mutableStateOf(0) }
+                // Text input — type, edit, then press Enter to send
+                var termInput by remember { mutableStateOf("") }
+                val sendAction = {
+                    if (termInput.isNotEmpty()) {
+                        viewModel.sendRawEscape(termInput)
+                        termInput = ""
+                    }
+                }
                 androidx.compose.material3.TextField(
-                    value = tfv,
-                    onValueChange = { newTfv ->
-                        tfv = newTfv
-                        if (newTfv.composition == null && newTfv.text.isNotEmpty()) {
-                            // No composing — all text is committed, send and clear
-                            val toSend = newTfv.text.substring(lastSentLen)
-                            if (toSend.isNotEmpty()) {
-                                viewModel.sendRawEscape(toSend)
-                            }
-                            tfv = androidx.compose.ui.text.input.TextFieldValue()
-                            lastSentLen = 0
-                        } else if (newTfv.composition != null) {
-                            // Composing in progress (Chinese pinyin) — wait
-                            lastSentLen = 0
-                        }
-                    },
+                    value = termInput,
+                    onValueChange = { termInput = it },
                     placeholder = { Text("Type here...", fontSize = 13.sp) },
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = { sendAction() }
+                    ),
+                    trailingIcon = {
+                        if (termInput.isNotEmpty()) {
+                            IconButton(onClick = { sendAction() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "Send",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 )
             } else {
                 LazyColumn(
