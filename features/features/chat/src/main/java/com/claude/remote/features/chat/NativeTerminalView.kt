@@ -40,6 +40,7 @@ private const val MAX_BUFFER = 100_000 // characters to keep in buffer
 @Composable
 fun NativeTerminalView(
     outputFlow: Flow<String>,
+    fontSize: Float = 12f,
     modifier: Modifier = Modifier
 ) {
     var buffer by remember { mutableStateOf("") }
@@ -68,8 +69,8 @@ fun NativeTerminalView(
             Text(
                 text = buffer.ifEmpty { "Waiting for output..." },
                 style = TextStyle(
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
+                    fontSize = fontSize.sp,
+                    lineHeight = (fontSize * 1.35f).sp,
                     fontFamily = FontFamily.Monospace,
                     color = Color(0xFFEAE1D9) // warm terminal foreground
                 ),
