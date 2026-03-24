@@ -125,20 +125,25 @@ fun ChatScreen(
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
                 viewModel.webViewHolder.webView?.let { wv ->
-                    viewModel.webViewHolder.pageReady = false
-                    wv.post {
-                        wv.onResume()
-                        wv.resumeTimers()
-                        wv.loadUrl("file:///android_asset/terminal.html")
+                    if (viewModel.webViewHolder.rendererDead) {
+                        // Renderer killed by system — must reload
+                        viewModel.webViewHolder.pageReady = false
+                        wv.post {
+                            wv.loadUrl("file:///android_asset/terminal.html")
+                        }
+                        val deadline = System.currentTimeMillis() + 5000
+                        while (!viewModel.webViewHolder.pageReady && System.currentTimeMillis() < deadline) {
+                            kotlinx.coroutines.delay(100)
+                        }
+                    } else {
+                        // Renderer alive, just resume JS timers
+                        wv.post {
+                            wv.onResume()
+                            wv.resumeTimers()
+                        }
+                        kotlinx.coroutines.delay(300)
                     }
-                }
-                val deadline = System.currentTimeMillis() + 5000
-                while (!viewModel.webViewHolder.pageReady && System.currentTimeMillis() < deadline) {
-                    kotlinx.coroutines.delay(100)
-                }
-                if (viewModel.webViewHolder.pageReady) {
-                    kotlinx.coroutines.delay(200)
-                    viewModel.sendRawEscape("\u000c") // Ctrl+L
+                    viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
                 }
             }
         }

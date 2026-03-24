@@ -22,6 +22,7 @@ class TerminalWebViewHolder @Inject constructor(
         private set
 
     @Volatile var pageReady: Boolean = false
+    @Volatile var rendererDead: Boolean = false
 
     @Volatile var fontSize: Float = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         .getFloat("font_size", 16f)

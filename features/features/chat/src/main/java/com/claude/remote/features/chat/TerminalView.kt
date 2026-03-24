@@ -6,6 +6,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
@@ -69,17 +70,26 @@ fun TerminalView(
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     webViewHolder.markInitialized()
                     webViewHolder.pageReady = true
+                    webViewHolder.rendererDead = false
                     val fs = webViewHolder.fontSize
                     val dark = webViewHolder.isDarkTheme
                     view?.evaluateJavascript("if(window.setFontSize)setFontSize($fs)", null)
                     view?.evaluateJavascript("if(window.setThemeDark)setThemeDark($dark)", null)
-                    // Hide xterm's hidden textarea so it can't capture keyboard
                     view?.evaluateJavascript(
                         "document.querySelector('.xterm-helper-textarea')?.setAttribute('disabled','true');" +
                         "document.querySelector('.xterm-helper-textarea')?.style.display='none';",
                         null
                     )
                     view?.let { sendResizeToJs(it) }
+                }
+
+                override fun onRenderProcessGone(
+                    view: WebView?, detail: RenderProcessGoneDetail?
+                ): Boolean {
+                    DebugLog.log("WEBVIEW", "Render process gone! crashed=${detail?.didCrash()}")
+                    webViewHolder.pageReady = false
+                    webViewHolder.rendererDead = true
+                    return true // We handle it — don't let the system kill the Activity
                 }
             }
             wv.webChromeClient = object : WebChromeClient() {
