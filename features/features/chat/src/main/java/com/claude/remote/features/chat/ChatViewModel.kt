@@ -63,6 +63,12 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Ensure SSH is connected before opening terminal channel
+                if (sshClient.connectionState.value != com.claude.remote.core.ui.components.ConnectionState.CONNECTED) {
+                    DebugLog.log("CHAT", "SshClient not connected, connecting first...")
+                    sshClient.connect(sshClient.host, sshClient.port, sshClient.username, sshClient.password)
+                }
+
                 // Open new shell channel on existing SSH session
                 terminalHolder.createSshSession()
 
