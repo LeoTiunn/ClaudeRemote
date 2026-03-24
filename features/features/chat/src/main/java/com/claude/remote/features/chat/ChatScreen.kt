@@ -136,8 +136,7 @@ fun ChatScreen(
                         ConnectionStatusDot(state = uiState.connectionState)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            (uiState.sessionName.ifEmpty { "Claude Remote" }) +
-                                if (uiState.isTerminalMode) " [${uiState.outputChunkCount}]" else "",
+                            uiState.sessionName.ifEmpty { "Claude Remote" },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -185,19 +184,6 @@ fun ChatScreen(
                         )
                     }
 
-                    // Refresh terminal — forces Ctrl+L redraw
-                    if (uiState.isTerminalMode) {
-                        IconButton(
-                            onClick = { viewModel.sendRawEscape("\u000c") }
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh terminal",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     IconButton(onClick = { showMenu = true }) {
                         Icon(
                             Icons.Default.MoreVert,
@@ -223,29 +209,16 @@ fun ChatScreen(
         }
     ) { paddingValues ->
         if (uiState.isTerminalMode) {
-            // Box layout: WebView never resizes (immune to keyboard show/hide)
+            // Box layout: WebView never resizes regardless of keyboard state
             val density = androidx.compose.ui.platform.LocalDensity.current
-            var inputAreaHeightDp by remember { mutableStateOf(90.dp) }
+            var inputRowHeightDp by remember { mutableStateOf(56.dp) }
 
             Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                TerminalView(
-                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                    webViewHolder = viewModel.webViewHolder,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = inputAreaHeightDp)
-                )
-
+                // Terminal + key bar: fixed, never affected by keyboard
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .imePadding()
-                        .onSizeChanged { size ->
-                            with(density) {
-                                inputAreaHeightDp = size.height.toDp()
-                            }
-                        }
+                        .fillMaxSize()
+                        .padding(bottom = inputRowHeightDp)
                 ) {
                     if (uiState.isUploading) {
                         Row(
@@ -265,6 +238,14 @@ fun ChatScreen(
                         }
                     }
 
+                    TerminalView(
+                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                        webViewHolder = viewModel.webViewHolder,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    )
+
                     Divider(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         thickness = 0.5.dp
@@ -274,34 +255,45 @@ fun ChatScreen(
                         onKey = { seq -> viewModel.sendRawEscape(seq) },
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
 
-                    var termInput by remember { mutableStateOf("") }
-                    val focusRequester = remember { FocusRequester() }
-                    val keyboardController = LocalSoftwareKeyboardController.current
-                    val scope = rememberCoroutineScope()
-                    val sendAction = {
-                        if (termInput.isNotEmpty()) {
-                            viewModel.sendRawEscape(termInput + "\r")
-                            termInput = ""
-                        } else {
-                            viewModel.sendRawEscape("\r")
-                        }
-                        scope.launch {
-                            kotlinx.coroutines.delay(100)
-                            keyboardController?.hide()
-                        }
+                // Only input row moves with keyboard
+                var termInput by remember { mutableStateOf("") }
+                val focusRequester = remember { FocusRequester() }
+                val keyboardController = LocalSoftwareKeyboardController.current
+                val scope = rememberCoroutineScope()
+                val sendAction = {
+                    if (termInput.isNotEmpty()) {
+                        viewModel.sendRawEscape(termInput + "\r")
+                        termInput = ""
+                    } else {
+                        viewModel.sendRawEscape("\r")
                     }
-
-                    LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(300)
-                        focusRequester.requestFocus()
+                    scope.launch {
+                        kotlinx.coroutines.delay(100)
+                        keyboardController?.hide()
                     }
+                }
 
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(300)
+                    focusRequester.requestFocus()
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .imePadding()
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .onSizeChanged { size ->
+                                with(density) { inputRowHeightDp = size.height.toDp() }
+                            },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         androidx.compose.material3.OutlinedTextField(
