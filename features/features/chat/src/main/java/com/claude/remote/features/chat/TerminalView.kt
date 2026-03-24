@@ -144,8 +144,16 @@ fun TerminalView(
             if (count <= 5 || count % 50 == 0) {
                 DebugLog.log("WEBVIEW", "Sending chunk #$count (${chunk.length}b, b64=${b64.length})")
             }
-            webView.post {
-                webView.evaluateJavascript("writeBase64(\"$b64\")", null)
+            try {
+                webView.post {
+                    try {
+                        webView.evaluateJavascript("writeBase64('$b64')", null)
+                    } catch (e: Exception) {
+                        DebugLog.log("WEBVIEW", "evaluateJavascript failed: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                DebugLog.log("WEBVIEW", "post failed: ${e.message}")
             }
         }
     }
