@@ -1,3 +1,0 @@
-/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/armeabi-v7a/CMakeFiles/termux.dir
-/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/armeabi-v7a/CMakeFiles/edit_cache.dir
-/Users/leo.chang/Developer/LeoTiunn/ClaudeRemote/terminal-emulator/.cxx/Debug/4971t241/armeabi-v7a/CMakeFiles/rebuild_cache.dir
