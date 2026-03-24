@@ -69,11 +69,11 @@ private class TerminalInputConnection(
 ) : InputConnectionWrapper(target, true) {
 
     override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        if (text != null && text.isNotEmpty() && isPlainAscii(text)) {
-            // English typing: commit immediately instead of composing
+        if (text != null && text.length == 1 && text[0].code <= 127) {
+            // Single ASCII char (regular typing): commit immediately
             return commitText(text, newCursorPosition)
         }
-        // Chinese/other IME: let composing work normally
+        // Multi-char (swipe candidates) or non-ASCII (Chinese): composing normally
         return super.setComposingText(text, newCursorPosition)
     }
 
