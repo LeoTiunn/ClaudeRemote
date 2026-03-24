@@ -121,10 +121,11 @@ class NativeTerminalHolder @Inject constructor(
      * Connect via JSch and create an SshTerminalSession bridging
      * the SSH channel I/O to Termux's TerminalEmulator.
      */
-    suspend fun createSshSession(host: String, port: Int, username: String, password: String): SshTerminalSession =
-        withContext(Dispatchers.IO) {
-            DebugLog.log("TERM", "Connecting SSH to $host:$port as $username")
+    suspend fun createSshSession(host: String, port: Int, username: String, password: String): SshTerminalSession {
+        DebugLog.log("TERM", "Connecting SSH to $host:$port as $username")
 
+        // JSch network I/O on background thread
+        val (session, channel, sshInput, sshOutput) = withContext(Dispatchers.IO) {
             // Resolve hostname
             val resolvedHost = try {
                 java.net.InetAddress.getAllByName(host)
@@ -134,62 +135,63 @@ class NativeTerminalHolder @Inject constructor(
 
             // JSch SSH connection
             val jsch = JSch()
-            val session = jsch.getSession(username, resolvedHost, port)
-            session.setPassword(password)
+            val sess = jsch.getSession(username, resolvedHost, port)
+            sess.setPassword(password)
             val config = Properties()
             config["StrictHostKeyChecking"] = "no"
-            session.setConfig(config)
-            session.timeout = 0
-            session.setServerAliveInterval(15_000)
-            session.setServerAliveCountMax(3)
+            sess.setConfig(config)
+            sess.timeout = 0
+            sess.setServerAliveInterval(15_000)
+            sess.setServerAliveCountMax(3)
 
             DebugLog.log("TERM", "SSH connecting...")
-            session.connect(15_000)
+            sess.connect(15_000)
             DebugLog.log("TERM", "SSH connected")
-            jschSession = session
 
             // Open shell channel with PTY
-            val channel = session.openChannel("shell") as ChannelShell
-            channel.setPtyType("xterm-256color", 80, 24, 0, 0)
+            val ch = sess.openChannel("shell") as ChannelShell
+            ch.setPtyType("xterm-256color", 80, 24, 0, 0)
 
-            val sshInput = channel.inputStream
-            val sshOutput = channel.outputStream
+            val input = ch.inputStream
+            val output = ch.outputStream
 
-            channel.connect(10_000)
+            ch.connect(10_000)
             DebugLog.log("TERM", "Shell channel connected")
-            shellChannel = channel
 
-            // Create SshTerminalSession
+            SshConnectionResult(sess, ch, input, output)
+        }
+
+        jschSession = session
+        shellChannel = channel
+
+        // Create SshTerminalSession on MAIN thread (Handler needs Looper)
+        return withContext(Dispatchers.Main) {
             val sshTermSession = SshTerminalSession(sessionClient)
             termSession = sshTermSession
 
-            // Attach view if it exists
-            withContext(Dispatchers.Main) {
-                terminalView?.attachSession(sshTermSession)
-            }
-
-            // Use reasonable defaults — TerminalView will resize when it lays out
-            val cols = 80
-            val rows = 24
-
-            withContext(Dispatchers.Main) {
-                sshTermSession.initializeWithStreams(
-                    cols, rows, 0, 0,
-                    sshInput, sshOutput
-                ) { newCols, newRows ->
-                    // Resize callback — update JSch channel PTY size
-                    try {
-                        channel.setPtySize(newCols, newRows, newCols * 8, newRows * 16)
-                    } catch (e: Exception) {
-                        DebugLog.log("TERM", "PTY resize failed: ${e.message}")
-                    }
+            sshTermSession.initializeWithStreams(
+                80, 24, 0, 0,
+                sshInput, sshOutput
+            ) { newCols, newRows ->
+                try {
+                    channel.setPtySize(newCols, newRows, newCols * 8, newRows * 16)
+                } catch (e: Exception) {
+                    DebugLog.log("TERM", "PTY resize failed: ${e.message}")
                 }
-                terminalView?.attachSession(sshTermSession)
             }
+            terminalView?.attachSession(sshTermSession)
 
             DebugLog.log("TERM", "SshTerminalSession initialized")
             sshTermSession
         }
+    }
+
+    private data class SshConnectionResult(
+        val session: com.jcraft.jsch.Session,
+        val channel: ChannelShell,
+        val sshInput: java.io.InputStream,
+        val sshOutput: java.io.OutputStream
+    )
 
     fun attachExistingSession() {
         val session = termSession ?: return
