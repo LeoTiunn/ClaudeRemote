@@ -2,6 +2,8 @@ package com.claude.remote.features.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -61,20 +63,23 @@ fun NativeTerminalView(
         vertScrollState.animateScrollTo(vertScrollState.maxValue)
     }
 
-    SelectionContainer {
-        Text(
-            text = buffer.ifEmpty { "Waiting for output..." },
-            style = TextStyle(
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Color(0xFFEAE1D9) // warm terminal foreground
-            ),
-            modifier = modifier
-                .background(Color(0xFF1C1917)) // warm terminal background
-                .verticalScroll(vertScrollState)
-                .horizontalScroll(rememberScrollState())
-                .padding(8.dp)
-        )
+    Box(modifier = modifier) {
+        SelectionContainer {
+            Text(
+                text = buffer.ifEmpty { "Waiting for output..." },
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFFEAE1D9) // warm terminal foreground
+                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF1C1917)) // warm terminal background
+                    .verticalScroll(vertScrollState)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(8.dp)
+            )
+        }
     }
 }
