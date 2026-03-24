@@ -121,13 +121,24 @@ class NativeTerminalHolder @Inject constructor(
      * This is the exact same flow Termux uses — PTY + fork.
      */
     fun createSession(host: String, port: Int, username: String): TerminalSession {
+        // Resolve hostname to IP in Java — static dbclient can't use Android's DNS resolver
+        val resolvedHost = try {
+            java.net.InetAddress.getAllByName(host)
+                .firstOrNull { it is java.net.Inet4Address }
+                ?.hostAddress ?: host
+        } catch (e: Exception) {
+            DebugLog.log("TERM", "DNS resolve failed: ${e.message}, using raw host")
+            host
+        }
+        DebugLog.log("TERM", "Resolved $host -> $resolvedHost")
+
         val dbclientPath = getDbclientPath()
         val args = arrayOf(
             dbclientPath,
             "-y", "-y",           // Auto-accept host keys
             "-p", port.toString(),
-            "-T",                 // Allocate PTY on remote
-            "$username@$host"
+            "-t",                 // Force PTY allocation on remote
+            "$username@$resolvedHost"
         )
         val env = arrayOf(
             "TERM=xterm-256color",
