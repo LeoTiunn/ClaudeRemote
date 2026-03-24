@@ -113,9 +113,14 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-reconnect or redraw when app resumes
+    // Auto-reconnect or redraw when app resumes from background
     LaunchedEffect(lifecycleOwner) {
+        var firstResume = true
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            if (firstResume) {
+                firstResume = false
+                return@repeatOnLifecycle // TerminalView handles initial load
+            }
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
@@ -127,13 +132,12 @@ fun ChatScreen(
                         wv.loadUrl("file:///android_asset/terminal.html")
                     }
                 }
-                // Poll for pageReady (set by onPageFinished) with 5s timeout
                 val deadline = System.currentTimeMillis() + 5000
                 while (!viewModel.webViewHolder.pageReady && System.currentTimeMillis() < deadline) {
                     kotlinx.coroutines.delay(100)
                 }
                 if (viewModel.webViewHolder.pageReady) {
-                    kotlinx.coroutines.delay(200) // brief settle time
+                    kotlinx.coroutines.delay(200)
                     viewModel.sendRawEscape("\u000c") // Ctrl+L
                 }
             }
