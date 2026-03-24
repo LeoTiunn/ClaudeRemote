@@ -37,7 +37,7 @@ fun TerminalView(
         },
         update = { tv ->
             // Ensure session is attached and emulator initialized after layout
-            val session = holder.sshSession
+            val session = holder.termSession
             if (session != null && tv.currentSession != session) {
                 tv.attachSession(session)
                 if (tv.mEmulator == null && tv.width > 0) {

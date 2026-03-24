@@ -10,6 +10,12 @@ interface SshClient {
     var isAttachedToTmux: Boolean
     var currentSessionName: String
 
+    // Credentials for dbclient subprocess
+    val host: String
+    val port: Int
+    val username: String
+    val password: String
+
     suspend fun connect(host: String, port: Int, username: String, password: String)
     suspend fun reconnect()
     suspend fun disconnect()

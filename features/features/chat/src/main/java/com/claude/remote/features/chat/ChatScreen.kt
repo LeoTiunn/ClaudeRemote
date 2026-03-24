@@ -113,8 +113,7 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-reconnect when app resumes from background
-    // No WebView resume logic needed — native Canvas view survives background
+    // On resume: just redraw terminal. dbclient subprocess survives background.
     LaunchedEffect(lifecycleOwner) {
         var firstResume = true
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -122,12 +121,11 @@ fun ChatScreen(
                 firstResume = false
                 return@repeatOnLifecycle
             }
-            if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
-                viewModel.reconnect()
-            } else if (uiState.isTerminalMode) {
-                // Native view survives background — just redraw
+            if (uiState.isTerminalMode && viewModel.terminalHolder.isSessionRunning()) {
                 viewModel.terminalHolder.terminalView?.invalidate()
-                viewModel.sendRawEscape("\u000c") // Ctrl+L
+                viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
+            } else if (uiState.sessionName.isNotEmpty() && !viewModel.terminalHolder.isSessionRunning()) {
+                viewModel.reconnect()
             }
         }
     }

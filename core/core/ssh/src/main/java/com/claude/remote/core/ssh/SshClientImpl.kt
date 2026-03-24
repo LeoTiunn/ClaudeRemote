@@ -45,10 +45,14 @@ class SshClientImpl @Inject constructor() : SshClient {
     private var shellOutputStream: OutputStream? = null
     @Volatile private var shellReaderGeneration: Int = 0
 
-    @Volatile private var host: String = ""
-    @Volatile private var port: Int = 22
-    @Volatile private var username: String = ""
-    @Volatile private var password: String = ""
+    @Volatile override var host: String = ""
+        private set
+    @Volatile override var port: Int = 22
+        private set
+    @Volatile override var username: String = ""
+        private set
+    @Volatile override var password: String = ""
+        private set
     @Volatile override var isAttachedToTmux: Boolean = false
     @Volatile override var currentSessionName: String = ""
 

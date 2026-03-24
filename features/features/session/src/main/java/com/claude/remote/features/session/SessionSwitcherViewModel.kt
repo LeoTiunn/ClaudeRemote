@@ -157,15 +157,9 @@ class SessionSwitcherViewModel @Inject constructor(
 
     fun attachSession(sessionName: String) {
         _uiState.update { it.copy(repos = emptyList(), isSearching = false) }
-        viewModelScope.launch {
-            try {
-                ensureDetachedFromTmux()
-                tmuxSessionManager.attachToSession(sessionName, sshClient)
-                _uiState.update { it.copy(navigateToSession = sessionName) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
-            }
-        }
+        // Don't attach via JSch — ChatViewModel will start dbclient subprocess
+        sshClient.currentSessionName = sessionName
+        _uiState.update { it.copy(navigateToSession = sessionName) }
     }
 
     fun onNavigated() {
@@ -182,7 +176,8 @@ class SessionSwitcherViewModel @Inject constructor(
                 ensureDetachedFromTmux()
                 tmuxSessionManager.createSession(sessionName, workDir, sshClient)
                 kotlinx.coroutines.delay(500)
-                tmuxSessionManager.attachToSession(sessionName, sshClient)
+                // Don't attach via JSch — ChatViewModel will start dbclient
+                sshClient.currentSessionName = sessionName
                 _uiState.update { it.copy(navigateToSession = sessionName) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
