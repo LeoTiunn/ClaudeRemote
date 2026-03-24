@@ -120,16 +120,22 @@ fun ChatScreen(
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
                 viewModel.webViewHolder.webView?.let { wv ->
+                    viewModel.webViewHolder.pageReady = false
                     wv.post {
                         wv.onResume()
                         wv.resumeTimers()
-                        // Nuclear: reload page to reinitialize xterm.js + polling
                         wv.loadUrl("file:///android_asset/terminal.html")
                     }
                 }
-                // Wait for page load, then redraw terminal
-                kotlinx.coroutines.delay(1500)
-                viewModel.sendRawEscape("\u000c") // Ctrl+L
+                // Poll for pageReady (set by onPageFinished) with 5s timeout
+                val deadline = System.currentTimeMillis() + 5000
+                while (!viewModel.webViewHolder.pageReady && System.currentTimeMillis() < deadline) {
+                    kotlinx.coroutines.delay(100)
+                }
+                if (viewModel.webViewHolder.pageReady) {
+                    kotlinx.coroutines.delay(200) // brief settle time
+                    viewModel.sendRawEscape("\u000c") // Ctrl+L
+                }
             }
         }
     }

@@ -68,6 +68,7 @@ fun TerminalView(
                     super.onPageFinished(view, url)
                     DebugLog.log("WEBVIEW", "onPageFinished: $url")
                     webViewHolder.markInitialized()
+                    webViewHolder.pageReady = true
                     val fs = webViewHolder.fontSize
                     val dark = webViewHolder.isDarkTheme
                     view?.evaluateJavascript("if(window.setFontSize)setFontSize($fs)", null)
