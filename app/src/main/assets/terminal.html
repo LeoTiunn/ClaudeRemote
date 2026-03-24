@@ -196,14 +196,19 @@ try {
   if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
 
   // Poll for terminal output from Android bridge (replaces evaluateJavascript)
-  setInterval(function() {
-    try {
-      var data = Android.poll();
-      if (data && data.length > 0) {
-        writeBase64(data);
-      }
-    } catch(e) {}
-  }, 32);
+  window._pollId = null;
+  window.restartPolling = function() {
+    if (window._pollId) clearInterval(window._pollId);
+    window._pollId = setInterval(function() {
+      try {
+        var data = Android.poll();
+        if (data && data.length > 0) {
+          writeBase64(data);
+        }
+      } catch(e) {}
+    }, 32);
+  };
+  window.restartPolling();
 } catch(e) {
   document.title = 'INIT ERR: ' + e.message;
 }

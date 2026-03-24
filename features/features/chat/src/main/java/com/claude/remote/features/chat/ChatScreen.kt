@@ -119,14 +119,15 @@ fun ChatScreen(
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
-                // Resume WebView JS timers (paused by Android in background)
+                // Resume WebView JS timers and restart polling bridge
                 viewModel.webViewHolder.webView?.let { wv ->
                     wv.post {
                         wv.onResume()
                         wv.resumeTimers()
+                        wv.evaluateJavascript("if(window.restartPolling)restartPolling()", null)
                     }
                 }
-                kotlinx.coroutines.delay(300)
+                kotlinx.coroutines.delay(500)
                 viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
             }
         }
