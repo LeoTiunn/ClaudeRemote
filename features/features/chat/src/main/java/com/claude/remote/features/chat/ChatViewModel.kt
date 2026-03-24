@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.util.Base64
 import java.util.UUID
 import javax.inject.Inject
 
@@ -93,6 +94,8 @@ class ChatViewModel @Inject constructor(
                 if (sshClient.isAttachedToTmux) {
                     _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
                     _terminalOutput.emit(chunk)
+                    // Direct write to WebView — bypasses flow collection in TerminalView
+                    writeToWebView(chunk)
                 } else {
                     handleOutputChunk(chunk)
                 }
@@ -326,6 +329,19 @@ class ChatViewModel @Inject constructor(
                     sshClient.sendInput("tmux attach -t '${sshClient.currentSessionName}'")
                 }
             }
+        }
+    }
+
+    private fun writeToWebView(chunk: String) {
+        val wv = webViewHolder.webView ?: return
+        val b64 = Base64.encodeToString(
+            chunk.toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP
+        )
+        wv.post {
+            try {
+                wv.evaluateJavascript("writeBase64('$b64')", null)
+            } catch (_: Exception) {}
         }
     }
 
