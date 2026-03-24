@@ -173,6 +173,12 @@ class SshClientImpl @Inject constructor() : SshClient {
     }
 
     private suspend fun processShellOutput(text: String) {
+        // If attached to tmux, ALWAYS emit to UI — never block output
+        if (isAttachedToTmux) {
+            _outputFlow.emit(text)
+            return
+        }
+
         val pending = pendingCommand
         if (pending != null) {
             val startMarker = "START_${pending.marker}"
