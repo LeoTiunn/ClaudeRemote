@@ -20,7 +20,7 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
     private val tmuxSessionManager: TmuxSessionManager,
-    val webViewHolder: TerminalWebViewHolder,
+    val terminalHolder: NativeTerminalHolder,
     private val fileUploadManager: FileUploadManager
 ) : ViewModel() {
 
@@ -62,15 +62,14 @@ class ChatViewModel @Inject constructor(
 
     init {
         // Recover terminal mode if SSH is already attached to tmux
-        // (e.g., navigated away and came back — ViewModel recreated but SSH persists)
         _uiState.update { it.copy(sessionName = sshClient.currentSessionName) }
         if (sshClient.isAttachedToTmux) {
             _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
-            // Force tmux to redraw so the new WebView gets content
+            ensureSshSession()
+            terminalHolder.attachExistingSession()
             viewModelScope.launch {
-                kotlinx.coroutines.delay(500) // Wait for WebView to load
+                kotlinx.coroutines.delay(500)
                 try {
-                    // Send refresh sequence: Ctrl+L redraws the screen
                     sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L
                 } catch (_: Exception) {}
             }
@@ -87,7 +86,7 @@ class ChatViewModel @Inject constructor(
                                     isStreaming = true,
                                     outputChunkCount = it.outputChunkCount + 1
                                 ) }
-                                writeToWebView(chunk)
+                                writeToTerminal(chunk)
                             } else {
                                 handleOutputChunk(chunk)
                             }
@@ -98,7 +97,6 @@ class ChatViewModel @Inject constructor(
                 } catch (e: Exception) {
                     DebugLog.log("CHAT", "Output collect failed: ${e.message}")
                 }
-                // If collect ended (stream closed), wait and retry
                 DebugLog.log("CHAT", "Output collect ended, retrying in 1s...")
                 kotlinx.coroutines.delay(1000)
             }
@@ -139,12 +137,13 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun restoreAndAttach(sessionName: String) {
+        ensureSshSession()
+        terminalHolder.attachExistingSession()
         try {
-            // Capture scrollback history before attaching
             val history = tmuxSessionManager.capturePane(sessionName, sshClient)
             if (history.isNotBlank()) {
-                webViewHolder.outputBridge.enqueue("\u001b[2J\u001b[H")
-                webViewHolder.outputBridge.enqueue(history)
+                val bytes = ("\u001b[2J\u001b[H$history").toByteArray(Charsets.UTF_8)
+                terminalHolder.sshSession?.postProcessBytes(bytes)
             }
         } catch (e: Exception) {
             DebugLog.log("CHAT", "capturePane failed: ${e.message}")
@@ -152,6 +151,12 @@ class ChatViewModel @Inject constructor(
         tmuxSessionManager.attachToSession(sessionName, sshClient)
         kotlinx.coroutines.delay(500)
         sshClient.sendRawBytes(byteArrayOf(0x0C)) // Ctrl+L redraw
+    }
+
+    private fun ensureSshSession() {
+        if (terminalHolder.sshSession == null) {
+            terminalHolder.createSession(sshClient, viewModelScope)
+        }
     }
 
     private fun cleanTerminalOutput(raw: String): String {
@@ -333,8 +338,9 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun writeToWebView(chunk: String) {
-        webViewHolder.outputBridge.enqueue(chunk)
+    private fun writeToTerminal(chunk: String) {
+        val bytes = chunk.toByteArray(Charsets.UTF_8)
+        terminalHolder.sshSession?.postProcessBytes(bytes)
     }
 
     fun sendRawEscape(sequence: String) {

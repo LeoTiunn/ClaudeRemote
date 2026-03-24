@@ -113,38 +113,21 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // Auto-reconnect or redraw when app resumes from background
+    // Auto-reconnect when app resumes from background
+    // No WebView resume logic needed — native Canvas view survives background
     LaunchedEffect(lifecycleOwner) {
         var firstResume = true
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             if (firstResume) {
                 firstResume = false
-                return@repeatOnLifecycle // TerminalView handles initial load
+                return@repeatOnLifecycle
             }
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
-                viewModel.webViewHolder.webView?.let { wv ->
-                    if (viewModel.webViewHolder.rendererDead) {
-                        // Renderer killed by system — must reload
-                        viewModel.webViewHolder.pageReady = false
-                        wv.post {
-                            wv.loadUrl("file:///android_asset/terminal.html")
-                        }
-                        val deadline = System.currentTimeMillis() + 5000
-                        while (!viewModel.webViewHolder.pageReady && System.currentTimeMillis() < deadline) {
-                            kotlinx.coroutines.delay(100)
-                        }
-                    } else {
-                        // Renderer alive, just resume JS timers
-                        wv.post {
-                            wv.onResume()
-                            wv.resumeTimers()
-                        }
-                        kotlinx.coroutines.delay(300)
-                    }
-                    viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
-                }
+                // Native view survives background — just redraw
+                viewModel.terminalHolder.terminalView?.invalidate()
+                viewModel.sendRawEscape("\u000c") // Ctrl+L
             }
         }
     }
@@ -276,7 +259,7 @@ fun ChatScreen(
 
                     TerminalView(
                         onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                        webViewHolder = viewModel.webViewHolder,
+                        holder = viewModel.terminalHolder,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
