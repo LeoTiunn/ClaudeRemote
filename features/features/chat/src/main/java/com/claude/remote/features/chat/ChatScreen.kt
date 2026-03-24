@@ -243,13 +243,7 @@ fun ChatScreen(
                 var termInput by remember { mutableStateOf("") }
                 val focusRequester = remember { FocusRequester() }
                 val keyboardController = LocalSoftwareKeyboardController.current
-                val insertAction = {
-                    if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput)
-                        termInput = ""
-                    }
-                }
-                val enterAction = {
+                val sendAction = {
                     if (termInput.isNotEmpty()) {
                         viewModel.sendRawEscape(termInput + "\r")
                         termInput = ""
@@ -282,11 +276,11 @@ fun ChatScreen(
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send
                         ),
                         keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onSend = { enterAction() }
+                            onSend = { sendAction() }
                         ),
                         trailingIcon = {
                             if (termInput.isNotEmpty()) {
-                                IconButton(onClick = { insertAction() }) {
+                                IconButton(onClick = { sendAction() }) {
                                     Icon(
                                         imageVector = Icons.Default.Send,
                                         contentDescription = "Send",
