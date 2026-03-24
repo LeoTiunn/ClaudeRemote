@@ -339,6 +339,10 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun writeToTerminal(chunk: String) {
+        ensureSshSession()
+        if (terminalHolder.terminalView != null && terminalHolder.sshSession?.getEmulator() == null) {
+            terminalHolder.attachExistingSession()
+        }
         val bytes = chunk.toByteArray(Charsets.UTF_8)
         terminalHolder.sshSession?.postProcessBytes(bytes)
     }
