@@ -258,19 +258,21 @@ fun ChatScreen(
                     focusRequester.requestFocus()
                 }
 
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    tonalElevation = 4.dp,
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    androidx.compose.material3.TextField(
+                    androidx.compose.material3.OutlinedTextField(
                         value = termInput,
                         onValueChange = { termInput = it },
                         placeholder = { Text("Type here...", fontSize = 13.sp) },
-                        singleLine = true,
+                        maxLines = 4,
                         textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
                             .focusRequester(focusRequester),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send
@@ -278,18 +280,20 @@ fun ChatScreen(
                         keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                             onSend = { sendAction() }
                         ),
-                        trailingIcon = {
-                            if (termInput.isNotEmpty()) {
-                                IconButton(onClick = { sendAction() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Send,
-                                        contentDescription = "Send",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
+                        shape = RoundedCornerShape(20.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { sendAction() },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send",
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
