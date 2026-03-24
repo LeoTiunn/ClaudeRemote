@@ -480,7 +480,6 @@ fun TerminalKeysBar(
         "⇧Tab" to "\u001b[Z",
         "Ent" to "\r",
         "⌫" to "\u007f",
-        "C-l" to "\u000c",
         "←" to "\u001b[D",
         "↑" to "\u001b[A",
         "↓" to "\u001b[B",
