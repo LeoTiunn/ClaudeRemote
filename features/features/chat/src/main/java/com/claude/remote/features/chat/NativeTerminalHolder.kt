@@ -34,8 +34,6 @@ class NativeTerminalHolder @Inject constructor(
     var fontSize: Float = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         .getFloat("font_size", 16f)
 
-    var onResize: ((cols: Int, rows: Int) -> Unit)? = null
-
     /** Convert sp to px for Paint.setTextSize() which expects pixels. */
     private fun spToPx(sp: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics).toInt()
@@ -87,8 +85,7 @@ class NativeTerminalHolder @Inject constructor(
         override fun readFnKey(): Boolean = false
         override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
         override fun onEmulatorSet() {
-            val emulator = sshSession?.emulator ?: return
-            onResize?.invoke(emulator.mColumns, emulator.mRows)
+            // No-op: SshTerminalSession.updateSize() already calls resizePty
         }
         override fun logError(tag: String?, message: String?) {}
         override fun logWarn(tag: String?, message: String?) {}

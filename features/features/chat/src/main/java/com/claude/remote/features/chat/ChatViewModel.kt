@@ -81,11 +81,12 @@ class ChatViewModel @Inject constructor(
                     sshClient.outputStream.collect { chunk ->
                         try {
                             if (sshClient.isAttachedToTmux) {
-                                _uiState.update { it.copy(
-                                    isTerminalMode = true,
-                                    isStreaming = true,
-                                    outputChunkCount = it.outputChunkCount + 1
-                                ) }
+                                if (!_uiState.value.isTerminalMode) {
+                                    _uiState.update { it.copy(
+                                        isTerminalMode = true,
+                                        isStreaming = true
+                                    ) }
+                                }
                                 writeToTerminal(chunk)
                             } else {
                                 handleOutputChunk(chunk)
@@ -251,10 +252,6 @@ class ChatViewModel @Inject constructor(
 
     fun onInputChanged(text: String) {
         _uiState.update { it.copy(inputText = text) }
-    }
-
-    fun resizeTerminal(cols: Int, rows: Int) {
-        sshClient.resizePty(cols, rows)
     }
 
     fun sendMessage() {

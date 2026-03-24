@@ -258,7 +258,6 @@ fun ChatScreen(
                     }
 
                     TerminalView(
-                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
                         holder = viewModel.terminalHolder,
                         modifier = Modifier
                             .weight(1f)

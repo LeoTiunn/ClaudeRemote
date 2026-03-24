@@ -15,13 +15,10 @@ import androidx.compose.ui.viewinterop.AndroidView
  */
 @Composable
 fun TerminalView(
-    onResize: ((cols: Int, rows: Int) -> Unit)? = null,
     holder: NativeTerminalHolder,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    holder.onResize = onResize
 
     val view = remember {
         holder.detachFromParent()
@@ -43,7 +40,6 @@ fun TerminalView(
             val session = holder.sshSession
             if (session != null && tv.currentSession != session) {
                 tv.attachSession(session)
-                // If view already has size, initialize emulator now
                 if (tv.mEmulator == null && tv.width > 0) {
                     tv.updateSize()
                 }
