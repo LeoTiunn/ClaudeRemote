@@ -27,9 +27,9 @@ class TerminalWebViewHolder @Inject constructor() {
         return webView ?: object : WebView(context) {
             override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
                 val ic = super.onCreateInputConnection(outAttrs)
-                // Tell keyboard: plain text, no suggestions/predictions
-                outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                // TYPE_NULL = terminal mode: IME sends raw KeyEvents for English,
+                // commitText for composed text (Chinese characters, voice, etc.)
+                outAttrs.inputType = InputType.TYPE_NULL
                 return ic
             }
         }.also {
