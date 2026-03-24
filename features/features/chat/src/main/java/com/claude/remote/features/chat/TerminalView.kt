@@ -106,13 +106,8 @@ fun TerminalView(
             // Output bridge: JS polls for data via @JavascriptInterface (immune to resize)
             wv.addJavascriptInterface(webViewHolder.outputBridge, "Android")
 
-            var resizeRunnable: Runnable? = null
-            wv.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
-                resizeRunnable?.let { handler.removeCallbacks(it) }
-                val runnable = Runnable { sendResizeToJs(v as WebView) }
-                resizeRunnable = runnable
-                handler.postDelayed(runnable, 150)
-            }
+            // No layout change listener — WebView size is fixed (Box layout)
+            // Initial size set in onPageFinished via sendResizeToJs
 
             DebugLog.log("WEBVIEW", "Loading terminal.html")
             wv.loadUrl("file:///android_asset/terminal.html")

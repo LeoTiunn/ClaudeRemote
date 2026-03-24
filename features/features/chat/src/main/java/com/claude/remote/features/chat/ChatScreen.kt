@@ -213,7 +213,7 @@ fun ChatScreen(
             val density = androidx.compose.ui.platform.LocalDensity.current
             var inputRowHeightDp by remember { mutableStateOf(56.dp) }
 
-            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            Box(modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding())) {
                 // Terminal + key bar: fixed, never affected by keyboard
                 Column(
                     modifier = Modifier
@@ -280,51 +280,46 @@ fun ChatScreen(
                     focusRequester.requestFocus()
                 }
 
-                Box(
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .imePadding()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .onSizeChanged { size ->
+                            with(density) { inputRowHeightDp = size.height.toDp() }
+                        },
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    androidx.compose.material3.OutlinedTextField(
+                        value = termInput,
+                        onValueChange = { termInput = it },
+                        placeholder = { Text("Type here...", fontSize = 15.sp) },
+                        maxLines = 4,
+                        textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                            .onSizeChanged { size ->
-                                with(density) { inputRowHeightDp = size.height.toDp() }
-                            },
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .focusRequester(focusRequester),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                        ),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                            onSend = { sendAction() }
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { sendAction() },
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        androidx.compose.material3.OutlinedTextField(
-                            value = termInput,
-                            onValueChange = { termInput = it },
-                            placeholder = { Text("Type here...", fontSize = 15.sp) },
-                            maxLines = 4,
-                            textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(focusRequester),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                            ),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                onSend = { sendAction() }
-                            ),
-                            shape = RoundedCornerShape(20.dp)
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send",
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { sendAction() },
-                            modifier = Modifier.size(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Send,
-                                contentDescription = "Send",
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
                     }
                 }
             }
