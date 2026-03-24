@@ -68,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -208,6 +209,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
         ) {
             // Upload indicator
             if (uiState.isUploading) {
@@ -238,6 +240,7 @@ fun ChatScreen(
                 // Text input — type, edit, then press Enter to send
                 var termInput by remember { mutableStateOf("") }
                 val focusRequester = remember { FocusRequester() }
+                val keyboardController = LocalSoftwareKeyboardController.current
                 val sendAction = {
                     if (termInput.isNotEmpty()) {
                         viewModel.sendRawEscape(termInput)
@@ -246,7 +249,9 @@ fun ChatScreen(
                 }
 
                 LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(300)
                     focusRequester.requestFocus()
+                    keyboardController?.show()
                 }
 
                 androidx.compose.material3.TextField(
