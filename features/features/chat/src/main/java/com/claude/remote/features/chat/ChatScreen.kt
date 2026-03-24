@@ -245,7 +245,7 @@ fun ChatScreen(
                 val keyboardController = LocalSoftwareKeyboardController.current
                 val sendAction = {
                     if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput + "\r")
+                        viewModel.sendRawEscape(termInput)
                         termInput = ""
                     }
                 }
@@ -464,8 +464,8 @@ fun TerminalKeysBar(
         "C-c" to "\u0003",
         "C-b" to "\u0002",
         "Ent" to "\r",
+        "⌫" to "\u007f",
         "Tab" to "\t",
-        "⇧Tab" to "\u001b[Z",
         "←" to "\u001b[D",
         "↑" to "\u001b[A",
         "↓" to "\u001b[B",
