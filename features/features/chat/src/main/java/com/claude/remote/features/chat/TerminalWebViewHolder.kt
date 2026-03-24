@@ -5,7 +5,6 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputMethodManager
 import android.webkit.WebView
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,16 +27,7 @@ class TerminalWebViewHolder @Inject constructor() {
         return webView ?: object : WebView(context) {
             override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
                 val ic = super.onCreateInputConnection(outAttrs)
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                @Suppress("DEPRECATION")
-                val subtype = imm.currentInputMethodSubtype
-                val lang = subtype?.languageTag ?: subtype?.locale ?: "en"
-
-                outAttrs.inputType = if (lang.startsWith("zh") || lang.startsWith("ja") || lang.startsWith("ko")) {
-                    InputType.TYPE_CLASS_TEXT
-                } else {
-                    InputType.TYPE_NULL
-                }
+                outAttrs.inputType = InputType.TYPE_NULL
                 return ic
             }
         }.also {

@@ -374,8 +374,17 @@ class ChatViewModel @Inject constructor(
             voiceInputManager?.stopListening()
         } else {
             voiceInputManager?.startListening { recognizedText ->
-                _uiState.update {
-                    it.copy(inputText = it.inputText + recognizedText)
+                if (_uiState.value.isTerminalMode) {
+                    // Terminal mode: send directly to SSH
+                    viewModelScope.launch {
+                        try {
+                            sshClient.sendRawBytes(recognizedText.toByteArray(Charsets.UTF_8))
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(inputText = it.inputText + recognizedText)
+                    }
                 }
             }
         }
