@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.claude.remote.app.navigation.AppNavigation
 import com.claude.remote.core.ui.theme.ClaudeRemoteTheme
-import com.claude.remote.features.chat.TerminalWebViewHolder
 import com.claude.remote.features.settings.AppTheme
 import com.claude.remote.features.settings.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,7 +23,6 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
-    @Inject lateinit var webViewHolder: TerminalWebViewHolder
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,14 +35,6 @@ class MainActivity : ComponentActivity() {
                 AppTheme.SYSTEM -> isSystemInDarkTheme()
             }
 
-            // Sync terminal WebView theme
-            webViewHolder.isDarkTheme = darkTheme
-            webViewHolder.webView?.post {
-                webViewHolder.webView?.evaluateJavascript(
-                    "if(window.setThemeDark)setThemeDark($darkTheme)", null
-                )
-            }
-
             ClaudeRemoteTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -53,19 +43,6 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     AppNavigation(navController = navController)
                 }
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (::settingsRepository.isInitialized) {
-            val fontSize = settingsRepository.getFontSize()
-            webViewHolder.fontSize = fontSize
-            webViewHolder.webView?.post {
-                webViewHolder.webView?.evaluateJavascript(
-                    "if(window.setFontSize)setFontSize($fontSize)", null
-                )
             }
         }
     }
