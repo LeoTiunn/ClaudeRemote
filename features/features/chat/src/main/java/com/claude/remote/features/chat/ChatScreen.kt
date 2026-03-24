@@ -233,7 +233,11 @@ fun ChatScreen(
         if (uiState.isTerminalMode) {
             // Box layout: WebView never resizes regardless of keyboard state
             val density = androidx.compose.ui.platform.LocalDensity.current
-            var inputRowHeightDp by remember { mutableStateOf(56.dp) }
+            var inputContentHeightDp by remember { mutableStateOf(56.dp) }
+            val navBarHeightDp = with(density) {
+                WindowInsets.navigationBars.getBottom(density).toDp()
+            }
+            val inputRowHeightDp = inputContentHeightDp + navBarHeightDp
 
             Box(modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding())) {
                 // Terminal + key bar: fixed, never affected by keyboard
@@ -310,7 +314,7 @@ fun ChatScreen(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                         .onSizeChanged { size ->
-                            with(density) { inputRowHeightDp = size.height.toDp() }
+                            with(density) { inputContentHeightDp = size.height.toDp() }
                         },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
