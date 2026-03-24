@@ -119,16 +119,22 @@ fun ChatScreen(
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
-                // Resume WebView JS timers and restart polling bridge
                 viewModel.webViewHolder.webView?.let { wv ->
+                    // Step 1: resume WebView + JS timers
                     wv.post {
                         wv.onResume()
                         wv.resumeTimers()
-                        wv.evaluateJavascript("if(window.restartPolling)restartPolling()", null)
+                    }
+                    // Step 2: wait for JS engine, then restart polling
+                    kotlinx.coroutines.delay(600)
+                    wv.post {
+                        @Suppress("DEPRECATION")
+                        wv.loadUrl("javascript:void(restartPolling())")
                     }
                 }
+                // Step 3: wait for polling to start, then redraw
                 kotlinx.coroutines.delay(500)
-                viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
+                viewModel.sendRawEscape("\u000c") // Ctrl+L
             }
         }
     }
