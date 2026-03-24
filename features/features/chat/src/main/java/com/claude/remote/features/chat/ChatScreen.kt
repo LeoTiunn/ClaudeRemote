@@ -234,6 +234,30 @@ fun ChatScreen(
                         .weight(1f)
                         .fillMaxWidth()
                 )
+
+                // Text input box — regular Android EditText, all keyboard modes work
+                var termInput by remember { mutableStateOf("") }
+                androidx.compose.material3.TextField(
+                    value = termInput,
+                    onValueChange = { termInput = it },
+                    placeholder = { Text("Type here...", fontSize = 13.sp) },
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = {
+                            if (termInput.isNotEmpty()) {
+                                viewModel.sendRawEscape(termInput)
+                                termInput = ""
+                            }
+                        }
+                    )
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -263,8 +287,6 @@ fun ChatScreen(
 
             TerminalKeysBar(
                 onKey = { seq -> viewModel.sendRawEscape(seq) },
-                isVoiceListening = uiState.isVoiceListening,
-                onMicTap = { viewModel.toggleVoiceInput() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
@@ -405,8 +427,6 @@ fun StreamingIndicator(
 @Composable
 fun TerminalKeysBar(
     onKey: (String) -> Unit,
-    isVoiceListening: Boolean = false,
-    onMicTap: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val keys = listOf(
@@ -427,31 +447,6 @@ fun TerminalKeysBar(
             .padding(horizontal = 4.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        // Mic button for voice input (Chinese, etc.)
-        Surface(
-            onClick = { onMicTap() },
-            shape = RoundedCornerShape(6.dp),
-            color = if (isVoiceListening) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = 2.dp,
-            modifier = Modifier
-                .weight(1f)
-                .focusable(false)
-        ) {
-            Text(
-                text = if (isVoiceListening) "..." else "Mic",
-                style = TextStyle(
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = if (isVoiceListening) MaterialTheme.colorScheme.onError
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
-                textAlign = TextAlign.Center
-            )
-        }
-
         keys.forEach { (label, seq) ->
             Surface(
                 onClick = { onKey(seq) },
