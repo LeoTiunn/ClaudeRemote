@@ -29,6 +29,8 @@ public class SshTerminalSession extends TerminalSession {
     void onResize(int cols, int rows);
   }
 
+  private static final String LOG_TAG = "SshTerminalSession";
+
   public SshTerminalSession(TerminalSessionClient client) {
     super("/bin/sh", "/", new String[]{"/bin/sh"}, new String[0], null, client);
   }
@@ -55,19 +57,26 @@ public class SshTerminalSession extends TerminalSession {
     mReaderThread = new Thread("SshSessionReader") {
       @Override
       public void run() {
+        Logger.logWarn(mClient, LOG_TAG, "Reader thread started");
         try {
           byte[] buffer = new byte[8192];
           while (mRunning) {
             int read = mSshInput.read(buffer);
-            if (read == -1) break;
+            if (read == -1) {
+              Logger.logWarn(mClient, LOG_TAG, "Reader got EOF (-1)");
+              break;
+            }
             if (read > 0) {
               mProcessToTerminalIOQueue.write(buffer, 0, read);
               mMainThreadHandler.sendEmptyMessage(1); // MSG_NEW_INPUT
             }
           }
         } catch (IOException e) {
-          // Connection closed
+          Logger.logWarn(mClient, LOG_TAG, "Reader IOException: " + e.getMessage());
+        } catch (Exception e) {
+          Logger.logWarn(mClient, LOG_TAG, "Reader Exception: " + e.getClass().getName() + ": " + e.getMessage());
         }
+        Logger.logWarn(mClient, LOG_TAG, "Reader thread exiting, mRunning=" + mRunning);
         if (mRunning) {
           mRunning = false;
           mMainThreadHandler.sendMessage(mMainThreadHandler.obtainMessage(4, 0)); // MSG_PROCESS_EXITED
@@ -80,20 +89,39 @@ public class SshTerminalSession extends TerminalSession {
     mWriterThread = new Thread("SshSessionWriter") {
       @Override
       public void run() {
+        Logger.logWarn(mClient, LOG_TAG, "Writer thread started");
         byte[] buffer = new byte[4096];
         try {
           while (mRunning) {
             int bytesToWrite = mTerminalToProcessIOQueue.read(buffer, true);
-            if (bytesToWrite == -1) break;
+            if (bytesToWrite == -1) {
+              Logger.logWarn(mClient, LOG_TAG, "Writer got -1 from queue");
+              break;
+            }
             mSshOutput.write(buffer, 0, bytesToWrite);
             mSshOutput.flush();
           }
         } catch (IOException e) {
-          // Connection closed
+          Logger.logWarn(mClient, LOG_TAG, "Writer IOException: " + e.getMessage());
         }
+        Logger.logWarn(mClient, LOG_TAG, "Writer thread exiting");
       }
     };
     mWriterThread.start();
+  }
+
+  @Override
+  void cleanupResources(int exitStatus) {
+    // Override parent to avoid JNI.close(mTerminalFileDescriptor) which would close fd 0 (stdin)
+    Logger.logWarn(mClient, LOG_TAG, "cleanupResources called with exitStatus=" + exitStatus);
+    synchronized (this) {
+      mShellPid = -1;
+      mShellExitStatus = exitStatus;
+    }
+    mTerminalToProcessIOQueue.close();
+    mProcessToTerminalIOQueue.close();
+    try { if (mSshInput != null) mSshInput.close(); } catch (IOException ignored) {}
+    try { if (mSshOutput != null) mSshOutput.close(); } catch (IOException ignored) {}
   }
 
   @Override
