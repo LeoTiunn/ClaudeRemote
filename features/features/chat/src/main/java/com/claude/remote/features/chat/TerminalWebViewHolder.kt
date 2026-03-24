@@ -1,17 +1,14 @@
 package com.claude.remote.features.chat
 
 import android.content.Context
-import android.text.InputType
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
 import android.webkit.WebView
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Keeps the terminal WebView alive across navigation events.
- * WebView must be created with Activity context (not Application) for keyboard to work.
+ * WebView is display-only — keyboard input handled by TerminalInputOverlay.
  * Call getOrCreate(activityContext) the first time.
  */
 @Singleton
@@ -31,14 +28,10 @@ class TerminalWebViewHolder @Inject constructor() {
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
 
     fun getOrCreate(context: Context): WebView {
-        return webView ?: object : WebView(context) {
-            override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
-                val ic = super.onCreateInputConnection(outAttrs)
-                outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                return ic
-            }
-        }.also {
+        return webView ?: WebView(context).also {
+            // Display only — no keyboard focus
+            it.isFocusable = false
+            it.isFocusableInTouchMode = false
             webView = it
             isInitialized = false
         }
