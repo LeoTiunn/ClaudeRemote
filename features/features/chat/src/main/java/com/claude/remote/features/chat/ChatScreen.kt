@@ -267,11 +267,6 @@ fun ChatScreen(
                     } else {
                         viewModel.sendRawEscape("\r")
                     }
-                    scope.launch {
-                        kotlinx.coroutines.delay(500)
-                        keyboardController?.hide()
-                    }
-                    Unit
                 }
 
                 LaunchedEffect(Unit) {
