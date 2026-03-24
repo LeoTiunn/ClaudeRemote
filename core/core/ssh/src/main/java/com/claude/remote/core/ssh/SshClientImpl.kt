@@ -43,6 +43,7 @@ class SshClientImpl @Inject constructor() : SshClient {
     private var jschSession: Session? = null
     private var shellChannel: ChannelShell? = null
     private var shellOutputStream: OutputStream? = null
+    @Volatile private var shellReaderGeneration: Int = 0
 
     @Volatile private var host: String = ""
     @Volatile private var port: Int = 22
@@ -77,6 +78,7 @@ class SshClientImpl @Inject constructor() : SshClient {
             this@SshClientImpl.password = password
 
             // Clean up any existing connection first
+            shellReaderGeneration++  // Invalidate old reader before disconnect
             try {
                 shellOutputStream = null
                 shellChannel?.disconnect()
@@ -130,7 +132,7 @@ class SshClientImpl @Inject constructor() : SshClient {
                 DebugLog.log("SSH", "State -> CONNECTED")
 
                 // Background reader for shell output
-                startShellReader(channel, shellIn)
+                startShellReader(channel, shellIn, shellReaderGeneration)
             } catch (e: Exception) {
                 DebugLog.log("SSH", "Connect failed: ${e.javaClass.simpleName}: ${e.message}")
                 _connectionState.value = ConnectionState.DISCONNECTED
@@ -139,9 +141,9 @@ class SshClientImpl @Inject constructor() : SshClient {
         }
     }
 
-    private fun startShellReader(channel: ChannelShell, shellIn: java.io.InputStream) {
+    private fun startShellReader(channel: ChannelShell, shellIn: java.io.InputStream, generation: Int) {
         scope.launch {
-            DebugLog.log("SHELL", "Reader started")
+            DebugLog.log("SHELL", "Reader started (gen=$generation)")
             try {
                 val buffer = ByteArray(4096)
                 while (isActive && channel.isConnected && !channel.isClosed) {
@@ -160,10 +162,13 @@ class SshClientImpl @Inject constructor() : SshClient {
             } catch (e: Exception) {
                 DebugLog.log("SHELL", "Reader exception: ${e.javaClass.simpleName}: ${e.message}")
             }
-            // Shell died — try to reconnect
+            // Only reconnect if THIS reader is still the current one
+            if (generation != shellReaderGeneration) {
+                DebugLog.log("SHELL", "Stale reader (gen=$generation, current=${shellReaderGeneration}), skipping reconnect")
+                return@launch
+            }
             if (_connectionState.value == ConnectionState.CONNECTED) {
                 DebugLog.log("SHELL", "Shell died, triggering reconnect")
-                // Cancel any pending command
                 pendingCommand?.deferred?.complete("")
                 pendingCommand = null
                 _connectionState.value = ConnectionState.DISCONNECTED
