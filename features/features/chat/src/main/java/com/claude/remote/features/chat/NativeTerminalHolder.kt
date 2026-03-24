@@ -120,7 +120,7 @@ class NativeTerminalHolder @Inject constructor(
      * Create a standard Termux TerminalSession running dbclient as subprocess.
      * This is the exact same flow Termux uses — PTY + fork.
      */
-    fun createSession(host: String, port: Int, username: String): TerminalSession {
+    fun createSession(host: String, port: Int, username: String, password: String? = null): TerminalSession {
         // Resolve hostname to IP in Java — static dbclient can't use Android's DNS resolver
         val resolvedHost = try {
             java.net.InetAddress.getAllByName(host)
@@ -140,11 +140,15 @@ class NativeTerminalHolder @Inject constructor(
             "-t",                 // Force PTY allocation on remote
             "$username@$resolvedHost"
         )
-        val env = arrayOf(
+        val envList = mutableListOf(
             "TERM=xterm-256color",
             "HOME=${context.filesDir.absolutePath}",
             "LANG=en_US.UTF-8"
         )
+        if (password != null) {
+            envList.add("DBCLIENT_PASSWORD=$password")
+        }
+        val env = envList.toTypedArray()
 
         DebugLog.log("TERM", "Creating session: ${args.joinToString(" ")}")
         val session = TerminalSession(

@@ -76,37 +76,29 @@ class ChatViewModel @Inject constructor(
             connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTING
         ) }
 
-        // Create dbclient subprocess — this is the Termux way
-        terminalHolder.createSession(host, port, username)
+        // Create dbclient subprocess with password via env var
+        terminalHolder.createSession(host, port, username, password)
 
-        // Auto-send password when prompted, then attach to tmux
+        // Wait for auth, then attach to tmux
         viewModelScope.launch {
-            autoLogin(password, sessionName)
+            autoAttachTmux(sessionName)
         }
     }
 
     /**
-     * Watch for password prompt and tmux attachment.
-     * dbclient will show "password:" on the PTY — we send the stored password.
+     * Wait for SSH auth (password passed via DBCLIENT_PASSWORD env var),
+     * then attach to tmux session.
      */
-    private suspend fun autoLogin(password: String, sessionName: String) {
-        // Wait for dbclient to prompt for password
-        // The terminal emulator processes the output, we just need to wait a bit
-        // and send the password + Enter
-        kotlinx.coroutines.delay(3000) // Wait for SSH handshake + password prompt
+    private suspend fun autoAttachTmux(sessionName: String) {
+        // Wait for SSH handshake + password auth (handled by env var, no typing needed)
+        kotlinx.coroutines.delay(5000)
 
-        if (!passwordSent && terminalHolder.isSessionRunning()) {
-            DebugLog.log("CHAT", "Sending password...")
-            terminalHolder.writeToSession(password + "\r")
-            passwordSent = true
-
+        if (terminalHolder.isSessionRunning()) {
             _uiState.update { it.copy(
                 connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
             ) }
 
-            // Wait for shell, then attach to tmux session
-            kotlinx.coroutines.delay(2000)
-            if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
+            if (sessionName.isNotEmpty()) {
                 DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
                 terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
                 sshClient.currentSessionName = sessionName
