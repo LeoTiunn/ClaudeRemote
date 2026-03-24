@@ -347,11 +347,12 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    // Batch writes to WebView with backpressure
+    // Batch writes to WebView with backpressure + safety timeout
     private val pendingOutput = StringBuilder()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile private var flushScheduled = false
     @Volatile private var jsCallPending = false
+    @Volatile private var jsCallStartTime = 0L
 
     private fun writeToWebView(chunk: String) {
         val wv = webViewHolder.webView ?: return
@@ -367,6 +368,11 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun flushPendingOutput(wv: android.webkit.WebView) {
+        // Safety: if JS callback stuck for >2s, force reset
+        if (jsCallPending && System.currentTimeMillis() - jsCallStartTime > 2000) {
+            DebugLog.log("WEBVIEW", "JS callback stuck >2s, force reset")
+            jsCallPending = false
+        }
         // If previous JS call still running, wait and retry
         if (jsCallPending) {
             mainHandler.postDelayed({ flushPendingOutput(wv) }, 50)
@@ -384,6 +390,7 @@ class ChatViewModel @Inject constructor(
                 android.util.Base64.NO_WRAP
             )
             jsCallPending = true
+            jsCallStartTime = System.currentTimeMillis()
             try {
                 wv.evaluateJavascript("writeBase64('$b64')") {
                     jsCallPending = false
