@@ -347,16 +347,35 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    // Batch writes to WebView — accumulate chunks, flush every 50ms
+    private val pendingOutput = StringBuilder()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Volatile private var flushScheduled = false
+
     private fun writeToWebView(chunk: String) {
         val wv = webViewHolder.webView ?: return
-        val b64 = Base64.encodeToString(
-            chunk.toByteArray(Charsets.UTF_8),
-            Base64.NO_WRAP
-        )
-        wv.post {
-            try {
-                wv.evaluateJavascript("writeBase64('$b64')", null)
-            } catch (_: Exception) {}
+        synchronized(pendingOutput) {
+            pendingOutput.append(chunk)
+            if (!flushScheduled) {
+                flushScheduled = true
+                mainHandler.postDelayed({
+                    val data: String
+                    synchronized(pendingOutput) {
+                        data = pendingOutput.toString()
+                        pendingOutput.clear()
+                        flushScheduled = false
+                    }
+                    if (data.isNotEmpty()) {
+                        val b64 = android.util.Base64.encodeToString(
+                            data.toByteArray(Charsets.UTF_8),
+                            android.util.Base64.NO_WRAP
+                        )
+                        try {
+                            wv.evaluateJavascript("writeBase64('$b64')", null)
+                        } catch (_: Exception) {}
+                    }
+                }, 50)
+            }
         }
     }
 
