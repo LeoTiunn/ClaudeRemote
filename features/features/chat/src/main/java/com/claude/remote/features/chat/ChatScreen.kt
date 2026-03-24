@@ -59,7 +59,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -243,6 +245,7 @@ fun ChatScreen(
                 var termInput by remember { mutableStateOf("") }
                 val focusRequester = remember { FocusRequester() }
                 val keyboardController = LocalSoftwareKeyboardController.current
+                val scope = rememberCoroutineScope()
                 val sendAction = {
                     if (termInput.isNotEmpty()) {
                         viewModel.sendRawEscape(termInput + "\r")
@@ -250,7 +253,11 @@ fun ChatScreen(
                     } else {
                         viewModel.sendRawEscape("\r")
                     }
-                    keyboardController?.hide()
+                    scope.launch {
+                        kotlinx.coroutines.delay(500)
+                        keyboardController?.hide()
+                    }
+                    Unit
                 }
 
                 LaunchedEffect(Unit) {
