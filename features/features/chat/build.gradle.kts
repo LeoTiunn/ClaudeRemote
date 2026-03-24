@@ -60,5 +60,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
 
+    implementation(libs.jsch)
+
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

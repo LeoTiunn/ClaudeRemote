@@ -15,11 +15,11 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * ChatViewModel — now uses dbclient subprocess via standard Termux TerminalSession.
+ * ChatViewModel — uses JSch SSH connected to Termux TerminalEmulator.
  *
- * All SSH I/O goes through the PTY. No Java SSH bridge, no race conditions.
- * The SshClient is still used for settings (host, port, username, password)
- * but NOT for the actual connection — dbclient handles that.
+ * SSH connection is handled by JSch (pure Java). Terminal rendering
+ * is handled by Termux's TerminalEmulator + TerminalView (native Canvas).
+ * SshTerminalSession bridges the two — no external binary needed.
  */
 @HiltViewModel
 class ChatViewModel @Inject constructor(
@@ -31,12 +31,9 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    private var passwordSent = false
-
     init {
         val sessionName = sshClient.currentSessionName
         if (terminalHolder.isSessionRunning()) {
-            // Reattach to existing dbclient subprocess
             _uiState.update { it.copy(
                 isTerminalMode = true,
                 isStreaming = true,
@@ -45,15 +42,10 @@ class ChatViewModel @Inject constructor(
             ) }
             terminalHolder.attachExistingSession()
         } else if (sessionName.isNotEmpty()) {
-            // New navigation from session switcher — start dbclient
             connectAndAttach(sessionName)
         }
     }
 
-    /**
-     * Start a new SSH connection via dbclient subprocess.
-     * Called from session switcher after user picks a session.
-     */
     fun connectAndAttach(sessionName: String) {
         val host = sshClient.host
         val port = sshClient.port
@@ -65,9 +57,7 @@ class ChatViewModel @Inject constructor(
             return
         }
 
-        // Kill any existing session
         terminalHolder.destroySession()
-        passwordSent = false
 
         _uiState.update { it.copy(
             isTerminalMode = true,
@@ -76,33 +66,29 @@ class ChatViewModel @Inject constructor(
             connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTING
         ) }
 
-        // Create dbclient subprocess with password via env var
-        terminalHolder.createSession(host, port, username, password)
-
-        // Wait for auth, then attach to tmux
         viewModelScope.launch {
-            autoAttachTmux(sessionName)
-        }
-    }
+            try {
+                // JSch SSH + SshTerminalSession (all Java, no binary)
+                terminalHolder.createSshSession(host, port, username, password)
 
-    /**
-     * Wait for SSH auth (password passed via DBCLIENT_PASSWORD env var),
-     * then attach to tmux session.
-     */
-    private suspend fun autoAttachTmux(sessionName: String) {
-        // Wait for SSH handshake + password auth (handled by env var, no typing needed)
-        kotlinx.coroutines.delay(5000)
+                _uiState.update { it.copy(
+                    connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
+                ) }
 
-        if (terminalHolder.isSessionRunning()) {
-            _uiState.update { it.copy(
-                connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
-            ) }
-
-            if (sessionName.isNotEmpty()) {
-                DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
-                terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
-                sshClient.currentSessionName = sessionName
-                sshClient.isAttachedToTmux = true
+                // Wait for shell prompt, then attach tmux
+                kotlinx.coroutines.delay(1000)
+                if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
+                    DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
+                    terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
+                    sshClient.currentSessionName = sessionName
+                    sshClient.isAttachedToTmux = true
+                }
+            } catch (e: Exception) {
+                DebugLog.log("CHAT", "SSH connect failed: ${e.message}")
+                _uiState.update { it.copy(
+                    connectionState = com.claude.remote.core.ui.components.ConnectionState.DISCONNECTED,
+                    error = "SSH failed: ${e.message}"
+                ) }
             }
         }
     }
@@ -137,7 +123,6 @@ class ChatViewModel @Inject constructor(
             try {
                 _uiState.update { it.copy(isUploading = true, uploadFileName = "uploading...") }
 
-                // Detach from tmux
                 terminalHolder.writeBytes(byteArrayOf(0x02)) // Ctrl+B
                 kotlinx.coroutines.delay(150)
                 terminalHolder.writeBytes("d".toByteArray())
@@ -146,7 +131,6 @@ class ChatViewModel @Inject constructor(
                 val attachment = fileUploadManager.uploadFile(uri, sshClient)
                 _uiState.update { it.copy(isUploading = false, uploadFileName = null) }
 
-                // Re-attach to tmux
                 val sessionName = _uiState.value.sessionName
                 if (sessionName.isNotEmpty()) {
                     terminalHolder.writeToSession("tmux attach -t '$sessionName'\r")

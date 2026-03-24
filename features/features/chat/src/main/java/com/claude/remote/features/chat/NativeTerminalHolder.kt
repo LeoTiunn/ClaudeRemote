@@ -6,19 +6,25 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.util.TypedValue
 import com.claude.remote.core.ssh.DebugLog
+import com.claude.remote.core.ssh.SshClient
+import com.termux.terminal.SshTerminalSession
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
 import dagger.hilt.android.qualifiers.ApplicationContext
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.jcraft.jsch.ChannelShell
+import com.jcraft.jsch.JSch
+import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Holds native Termux TerminalView + TerminalSession (singleton).
+ * Holds native Termux TerminalView + SshTerminalSession (singleton).
  *
- * Uses real dbclient subprocess via PTY — identical to how Termux runs SSH.
- * No Java SSH bridge, no race conditions.
+ * Uses JSch for SSH, connected directly to Termux's TerminalEmulator.
+ * No external binary needed — all SSH happens in Java.
  */
 @Singleton
 class NativeTerminalHolder @Inject constructor(
@@ -30,19 +36,14 @@ class NativeTerminalHolder @Inject constructor(
     var termSession: TerminalSession? = null
         private set
 
+    private var jschSession: com.jcraft.jsch.Session? = null
+    private var shellChannel: ChannelShell? = null
+
     var fontSize: Float = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         .getFloat("font_size", 16f)
 
     private fun spToPx(sp: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics).toInt()
-
-    /** Get dbclient path from native libs directory (packaged as libdbclient.so). */
-    fun getDbclientPath(): String {
-        val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val path = "$nativeLibDir/libdbclient.so"
-        DebugLog.log("TERM", "dbclient path: $path")
-        return path
-    }
 
     private val sessionClient = object : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
@@ -62,7 +63,7 @@ class NativeTerminalHolder @Inject constructor(
             terminalView?.invalidate()
         }
         override fun setTerminalShellPid(session: TerminalSession, pid: Int) {
-            DebugLog.log("TERM", "Shell PID: $pid")
+            DebugLog.log("TERM", "Session initialized")
         }
         override fun getTerminalCursorStyle(): Int = 0
         override fun logError(tag: String?, message: String?) {
@@ -117,52 +118,78 @@ class NativeTerminalHolder @Inject constructor(
     }
 
     /**
-     * Create a standard Termux TerminalSession running dbclient as subprocess.
-     * This is the exact same flow Termux uses — PTY + fork.
+     * Connect via JSch and create an SshTerminalSession bridging
+     * the SSH channel I/O to Termux's TerminalEmulator.
      */
-    fun createSession(host: String, port: Int, username: String, password: String? = null): TerminalSession {
-        // Resolve hostname to IP in Java — static dbclient can't use Android's DNS resolver
-        val resolvedHost = try {
-            java.net.InetAddress.getAllByName(host)
-                .firstOrNull { it is java.net.Inet4Address }
-                ?.hostAddress ?: host
-        } catch (e: Exception) {
-            DebugLog.log("TERM", "DNS resolve failed: ${e.message}, using raw host")
-            host
-        }
-        DebugLog.log("TERM", "Resolved $host -> $resolvedHost")
+    suspend fun createSshSession(host: String, port: Int, username: String, password: String): SshTerminalSession =
+        withContext(Dispatchers.IO) {
+            DebugLog.log("TERM", "Connecting SSH to $host:$port as $username")
 
-        val dbclientPath = getDbclientPath()
-        val args = arrayOf(
-            dbclientPath,
-            "-y", "-y",           // Auto-accept host keys
-            "-p", port.toString(),
-            "-t",                 // Force PTY allocation on remote
-            "$username@$resolvedHost"
-        )
-        val envList = mutableListOf(
-            "TERM=xterm-256color",
-            "HOME=${context.filesDir.absolutePath}",
-            "LANG=en_US.UTF-8"
-        )
-        if (password != null) {
-            envList.add("DBCLIENT_PASSWORD=$password")
-        }
-        val env = envList.toTypedArray()
+            // Resolve hostname
+            val resolvedHost = try {
+                java.net.InetAddress.getAllByName(host)
+                    .firstOrNull { it is java.net.Inet4Address }
+                    ?.hostAddress ?: host
+            } catch (e: Exception) { host }
 
-        DebugLog.log("TERM", "Creating session: ${args.joinToString(" ")}")
-        val session = TerminalSession(
-            dbclientPath,
-            context.filesDir.absolutePath,
-            args,
-            env,
-            null,
-            sessionClient
-        )
-        termSession = session
-        terminalView?.attachSession(session)
-        return session
-    }
+            // JSch SSH connection
+            val jsch = JSch()
+            val session = jsch.getSession(username, resolvedHost, port)
+            session.setPassword(password)
+            val config = Properties()
+            config["StrictHostKeyChecking"] = "no"
+            session.setConfig(config)
+            session.timeout = 0
+            session.setServerAliveInterval(15_000)
+            session.setServerAliveCountMax(3)
+
+            DebugLog.log("TERM", "SSH connecting...")
+            session.connect(15_000)
+            DebugLog.log("TERM", "SSH connected")
+            jschSession = session
+
+            // Open shell channel with PTY
+            val channel = session.openChannel("shell") as ChannelShell
+            channel.setPtyType("xterm-256color", 80, 24, 0, 0)
+
+            val sshInput = channel.inputStream
+            val sshOutput = channel.outputStream
+
+            channel.connect(10_000)
+            DebugLog.log("TERM", "Shell channel connected")
+            shellChannel = channel
+
+            // Create SshTerminalSession
+            val sshTermSession = SshTerminalSession(sessionClient)
+            termSession = sshTermSession
+
+            // Attach view if it exists
+            withContext(Dispatchers.Main) {
+                terminalView?.attachSession(sshTermSession)
+            }
+
+            // Use reasonable defaults — TerminalView will resize when it lays out
+            val cols = 80
+            val rows = 24
+
+            withContext(Dispatchers.Main) {
+                sshTermSession.initializeWithStreams(
+                    cols, rows, 0, 0,
+                    sshInput, sshOutput
+                ) { newCols, newRows ->
+                    // Resize callback — update JSch channel PTY size
+                    try {
+                        channel.setPtySize(newCols, newRows, newCols * 8, newRows * 16)
+                    } catch (e: Exception) {
+                        DebugLog.log("TERM", "PTY resize failed: ${e.message}")
+                    }
+                }
+                terminalView?.attachSession(sshTermSession)
+            }
+
+            DebugLog.log("TERM", "SshTerminalSession initialized")
+            sshTermSession
+        }
 
     fun attachExistingSession() {
         val session = termSession ?: return
@@ -171,12 +198,10 @@ class NativeTerminalHolder @Inject constructor(
         tv.attachSession(session)
     }
 
-    /** Write text to the terminal session (goes to dbclient's stdin via PTY). */
     fun writeToSession(text: String) {
         termSession?.write(text)
     }
 
-    /** Write raw bytes to the terminal session. */
     fun writeBytes(data: ByteArray) {
         termSession?.write(data, 0, data.size)
     }
@@ -195,5 +220,9 @@ class NativeTerminalHolder @Inject constructor(
     fun destroySession() {
         termSession?.finishIfRunning()
         termSession = null
+        try { shellChannel?.disconnect() } catch (_: Exception) {}
+        try { jschSession?.disconnect() } catch (_: Exception) {}
+        shellChannel = null
+        jschSession = null
     }
 }
