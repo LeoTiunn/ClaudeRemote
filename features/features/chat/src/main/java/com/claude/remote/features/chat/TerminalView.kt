@@ -1,5 +1,6 @@
 package com.claude.remote.features.chat
 
+import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -29,7 +30,12 @@ fun TerminalView(
     AndroidView(
         factory = {
             holder.detachFromParent()
-            view
+            view.apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
         },
         modifier = modifier
     )
