@@ -66,6 +66,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.claude.remote.core.ui.components.ConnectionState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -235,12 +237,18 @@ fun ChatScreen(
 
                 // Text input — type, edit, then press Enter to send
                 var termInput by remember { mutableStateOf("") }
+                val focusRequester = remember { FocusRequester() }
                 val sendAction = {
                     if (termInput.isNotEmpty()) {
                         viewModel.sendRawEscape(termInput)
                         termInput = ""
                     }
                 }
+
+                LaunchedEffect(Unit) {
+                    focusRequester.requestFocus()
+                }
+
                 androidx.compose.material3.TextField(
                     value = termInput,
                     onValueChange = { termInput = it },
@@ -249,7 +257,8 @@ fun ChatScreen(
                     textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .focusRequester(focusRequester),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         imeAction = androidx.compose.ui.text.input.ImeAction.Send
                     ),
