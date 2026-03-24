@@ -339,6 +339,37 @@ class SshClientImpl @Inject constructor() : SshClient {
             .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
     }
 
+    override suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle {
+        return withContext(Dispatchers.IO) {
+            val session = jschSession ?: throw IllegalStateException("SSH not connected")
+            DebugLog.log("SSH", "Opening new shell channel on existing session")
+
+            val channel = session.openChannel("shell") as ChannelShell
+            channel.setPtyType("xterm-256color", cols, rows, 0, 0)
+
+            val input = channel.inputStream
+            val output = channel.outputStream
+
+            channel.connect(10_000)
+            DebugLog.log("SSH", "New shell channel connected: ${channel.isConnected}")
+
+            ShellChannelHandle(
+                inputStream = input,
+                outputStream = output,
+                resizePty = { c, r ->
+                    try {
+                        channel.setPtySize(c, r, c * 8, r * 16)
+                    } catch (e: Exception) {
+                        DebugLog.log("SSH", "PTY resize failed: ${e.message}")
+                    }
+                },
+                disconnect = {
+                    try { channel.disconnect() } catch (_: Exception) {}
+                }
+            )
+        }
+    }
+
     override fun resizePty(cols: Int, rows: Int) {
         DebugLog.log("SSH", "Resizing PTY to ${cols}x${rows}")
         try {

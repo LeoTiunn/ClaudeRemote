@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.util.TypedValue
 import com.claude.remote.core.ssh.DebugLog
+import com.claude.remote.core.ssh.ShellChannelHandle
 import com.claude.remote.core.ssh.SshClient
 import com.termux.terminal.SshTerminalSession
 import com.termux.terminal.TerminalSession
@@ -14,9 +15,6 @@ import com.termux.view.TerminalViewClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.jcraft.jsch.ChannelShell
-import com.jcraft.jsch.JSch
-import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +26,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class NativeTerminalHolder @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val sshClient: SshClient
 ) {
     var terminalView: com.termux.view.TerminalView? = null
         private set
@@ -36,8 +35,7 @@ class NativeTerminalHolder @Inject constructor(
     var termSession: TerminalSession? = null
         private set
 
-    private var jschSession: com.jcraft.jsch.Session? = null
-    private var shellChannel: ChannelShell? = null
+    private var channelHandle: ShellChannelHandle? = null
 
     var fontSize: Float = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
         .getFloat("font_size", 16f)
@@ -118,51 +116,15 @@ class NativeTerminalHolder @Inject constructor(
     }
 
     /**
-     * Connect via JSch and create an SshTerminalSession bridging
-     * the SSH channel I/O to Termux's TerminalEmulator.
+     * Open a new shell channel on the existing SshClient session and bridge
+     * it to Termux's TerminalEmulator via SshTerminalSession.
      */
-    suspend fun createSshSession(host: String, port: Int, username: String, password: String): SshTerminalSession {
-        DebugLog.log("TERM", "Connecting SSH to $host:$port as $username")
+    suspend fun createSshSession(): SshTerminalSession {
+        DebugLog.log("TERM", "Opening terminal channel on existing SSH session")
 
-        // JSch network I/O on background thread
-        val (session, channel, sshInput, sshOutput) = withContext(Dispatchers.IO) {
-            // Resolve hostname
-            val resolvedHost = try {
-                java.net.InetAddress.getAllByName(host)
-                    .firstOrNull { it is java.net.Inet4Address }
-                    ?.hostAddress ?: host
-            } catch (e: Exception) { host }
-
-            // JSch SSH connection
-            val jsch = JSch()
-            val sess = jsch.getSession(username, resolvedHost, port)
-            sess.setPassword(password)
-            val config = Properties()
-            config["StrictHostKeyChecking"] = "no"
-            sess.setConfig(config)
-            sess.timeout = 0
-            sess.setServerAliveInterval(15_000)
-            sess.setServerAliveCountMax(3)
-
-            DebugLog.log("TERM", "SSH connecting...")
-            sess.connect(15_000)
-            DebugLog.log("TERM", "SSH connected")
-
-            // Open shell channel with PTY
-            val ch = sess.openChannel("shell") as ChannelShell
-            ch.setPtyType("xterm-256color", 80, 24, 0, 0)
-
-            val input = ch.inputStream
-            val output = ch.outputStream
-
-            ch.connect(10_000)
-            DebugLog.log("TERM", "Shell channel connected")
-
-            SshConnectionResult(sess, ch, input, output)
-        }
-
-        jschSession = session
-        shellChannel = channel
+        // Open a new shell channel on the shared SSH session (IO thread)
+        val handle = sshClient.openShellChannel(80, 24)
+        channelHandle = handle
 
         // Create SshTerminalSession on MAIN thread (Handler needs Looper)
         return withContext(Dispatchers.Main) {
@@ -171,13 +133,9 @@ class NativeTerminalHolder @Inject constructor(
 
             sshTermSession.initializeWithStreams(
                 80, 24, 0, 0,
-                sshInput, sshOutput
+                handle.inputStream, handle.outputStream
             ) { newCols, newRows ->
-                try {
-                    channel.setPtySize(newCols, newRows, newCols * 8, newRows * 16)
-                } catch (e: Exception) {
-                    DebugLog.log("TERM", "PTY resize failed: ${e.message}")
-                }
+                handle.resizePty(newCols, newRows)
             }
             terminalView?.attachSession(sshTermSession)
 
@@ -185,13 +143,6 @@ class NativeTerminalHolder @Inject constructor(
             sshTermSession
         }
     }
-
-    private data class SshConnectionResult(
-        val session: com.jcraft.jsch.Session,
-        val channel: ChannelShell,
-        val sshInput: java.io.InputStream,
-        val sshOutput: java.io.OutputStream
-    )
 
     fun attachExistingSession() {
         val session = termSession ?: return
@@ -222,9 +173,7 @@ class NativeTerminalHolder @Inject constructor(
     fun destroySession() {
         termSession?.finishIfRunning()
         termSession = null
-        try { shellChannel?.disconnect() } catch (_: Exception) {}
-        try { jschSession?.disconnect() } catch (_: Exception) {}
-        shellChannel = null
-        jschSession = null
+        channelHandle?.disconnect?.invoke()
+        channelHandle = null
     }
 }

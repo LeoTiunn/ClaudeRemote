@@ -47,12 +47,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun connectAndAttach(sessionName: String) {
-        val host = sshClient.host
-        val port = sshClient.port
-        val username = sshClient.username
-        val password = sshClient.password
-
-        if (host.isBlank()) {
+        if (sshClient.host.isBlank()) {
             _uiState.update { it.copy(error = "SSH host not configured") }
             return
         }
@@ -68,8 +63,8 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // JSch SSH + SshTerminalSession (all Java, no binary)
-                terminalHolder.createSshSession(host, port, username, password)
+                // Open new shell channel on existing SSH session
+                terminalHolder.createSshSession()
 
                 _uiState.update { it.copy(
                     connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
