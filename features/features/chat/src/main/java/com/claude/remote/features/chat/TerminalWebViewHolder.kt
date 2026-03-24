@@ -24,15 +24,16 @@ class TerminalWebViewHolder @Inject constructor() {
     var onInput: ((String) -> Unit)? = null
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
 
-    // false = English (TYPE_NULL, immediate keys)
-    // true = Chinese (TYPE_CLASS_TEXT, composing allowed)
-    var chineseMode: Boolean = false
-
     fun getOrCreate(context: Context): WebView {
         return webView ?: object : WebView(context) {
             override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
                 val ic = super.onCreateInputConnection(outAttrs)
-                outAttrs.inputType = if (chineseMode) {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                @Suppress("DEPRECATION")
+                val subtype = imm.currentInputMethodSubtype
+                val lang = subtype?.languageTag ?: subtype?.locale ?: "en"
+
+                outAttrs.inputType = if (lang.startsWith("zh") || lang.startsWith("ja") || lang.startsWith("ko")) {
                     InputType.TYPE_CLASS_TEXT
                 } else {
                     InputType.TYPE_NULL
@@ -43,14 +44,6 @@ class TerminalWebViewHolder @Inject constructor() {
             webView = it
             isInitialized = false
         }
-    }
-
-    fun toggleChineseMode() {
-        chineseMode = !chineseMode
-        // Force IME to re-read inputType
-        val wv = webView ?: return
-        val imm = wv.context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.restartInput(wv)
     }
 
     fun markInitialized() { isInitialized = true }
