@@ -235,28 +235,32 @@ fun ChatScreen(
                         .fillMaxWidth()
                 )
 
-                // Text input box — regular Android EditText, all keyboard modes work
-                var termInput by remember { mutableStateOf("") }
+                // Text input — auto-sends when composing ends (no Send button needed)
+                var tfv by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue()) }
+                var lastSentLen by remember { mutableStateOf(0) }
                 androidx.compose.material3.TextField(
-                    value = termInput,
-                    onValueChange = { termInput = it },
+                    value = tfv,
+                    onValueChange = { newTfv ->
+                        tfv = newTfv
+                        if (newTfv.composition == null && newTfv.text.isNotEmpty()) {
+                            // No composing — all text is committed, send and clear
+                            val toSend = newTfv.text.substring(lastSentLen)
+                            if (toSend.isNotEmpty()) {
+                                viewModel.sendRawEscape(toSend)
+                            }
+                            tfv = androidx.compose.ui.text.input.TextFieldValue()
+                            lastSentLen = 0
+                        } else if (newTfv.composition != null) {
+                            // Composing in progress (Chinese pinyin) — wait
+                            lastSentLen = 0
+                        }
+                    },
                     placeholder = { Text("Type here...", fontSize = 13.sp) },
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onSend = {
-                            if (termInput.isNotEmpty()) {
-                                viewModel.sendRawEscape(termInput)
-                                termInput = ""
-                            }
-                        }
-                    )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             } else {
                 LazyColumn(
