@@ -98,10 +98,15 @@ class NativeTerminalHolder @Inject constructor(
         return terminalView ?: com.termux.view.TerminalView(context, null).also { tv ->
             tv.setTerminalViewClient(viewClient)
             tv.setTextSize(fontSize.toInt())
+            tv.setBackgroundColor(0xFF1C1917.toInt()) // Match dark theme
             // Don't capture keyboard — we use native TextField
             tv.isFocusable = false
             tv.isFocusableInTouchMode = false
             terminalView = tv
+            // Attach existing session if one was created before the view
+            sshSession?.let { session ->
+                tv.attachSession(session)
+            }
         }
     }
 

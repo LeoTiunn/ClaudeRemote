@@ -1,6 +1,7 @@
 package com.claude.remote.features.chat
 
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -37,6 +38,18 @@ fun TerminalView(
                 )
             }
         },
-        modifier = modifier
+        update = { tv ->
+            // Ensure session is attached and emulator initialized after layout
+            val session = holder.sshSession
+            if (session != null && tv.currentSession != session) {
+                tv.attachSession(session)
+            }
+            // Ensure emulator is sized even if onSizeChanged already fired before session attach
+            if (tv.currentSession != null && tv.mEmulator == null && tv.width > 0) {
+                tv.updateSize()
+            }
+            tv.requestLayout()
+        },
+        modifier = modifier.fillMaxSize()
     )
 }
