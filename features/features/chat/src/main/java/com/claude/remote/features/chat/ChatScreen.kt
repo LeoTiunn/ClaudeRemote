@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -222,105 +223,116 @@ fun ChatScreen(
         }
     ) { paddingValues ->
         if (uiState.isTerminalMode) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .imePadding()
-            ) {
-                if (uiState.isUploading) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Text(
-                            "Uploading file...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+            // Box layout: WebView never resizes (immune to keyboard show/hide)
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            var inputAreaHeightDp by remember { mutableStateOf(90.dp) }
 
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 TerminalView(
                     onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
                     webViewHolder = viewModel.webViewHolder,
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .fillMaxSize()
+                        .padding(bottom = inputAreaHeightDp)
                 )
 
-                Divider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    thickness = 0.5.dp
-                )
-
-                TerminalKeysBar(
-                    onKey = { seq -> viewModel.sendRawEscape(seq) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                var termInput by remember { mutableStateOf("") }
-                val focusRequester = remember { FocusRequester() }
-                val keyboardController = LocalSoftwareKeyboardController.current
-                val scope = rememberCoroutineScope()
-                val sendAction = {
-                    if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput + "\r")
-                        termInput = ""
-                    } else {
-                        viewModel.sendRawEscape("\r")
-                    }
-                    scope.launch {
-                        kotlinx.coroutines.delay(100)
-                        keyboardController?.hide()
-                    }
-                }
-
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(300)
-                    focusRequester.requestFocus()
-                }
-
-                Row(
+                Column(
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .imePadding()
+                        .onSizeChanged { size ->
+                            with(density) {
+                                inputAreaHeightDp = size.height.toDp()
+                            }
+                        }
                 ) {
-                    androidx.compose.material3.OutlinedTextField(
-                        value = termInput,
-                        onValueChange = { termInput = it },
-                        placeholder = { Text("Type here...", fontSize = 15.sp) },
-                        maxLines = 4,
-                        textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focusRequester),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onSend = { sendAction() }
-                        ),
-                        shape = RoundedCornerShape(20.dp)
+                    if (uiState.isUploading) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Text(
+                                "Uploading file...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Divider(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        thickness = 0.5.dp
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { sendAction() },
-                        modifier = Modifier.size(44.dp)
+
+                    TerminalKeysBar(
+                        onKey = { seq -> viewModel.sendRawEscape(seq) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    var termInput by remember { mutableStateOf("") }
+                    val focusRequester = remember { FocusRequester() }
+                    val keyboardController = LocalSoftwareKeyboardController.current
+                    val scope = rememberCoroutineScope()
+                    val sendAction = {
+                        if (termInput.isNotEmpty()) {
+                            viewModel.sendRawEscape(termInput + "\r")
+                            termInput = ""
+                        } else {
+                            viewModel.sendRawEscape("\r")
+                        }
+                        scope.launch {
+                            kotlinx.coroutines.delay(100)
+                            keyboardController?.hide()
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(300)
+                        focusRequester.requestFocus()
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "Send",
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                        androidx.compose.material3.OutlinedTextField(
+                            value = termInput,
+                            onValueChange = { termInput = it },
+                            placeholder = { Text("Type here...", fontSize = 15.sp) },
+                            maxLines = 4,
+                            textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequester),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                onSend = { sendAction() }
+                            ),
+                            shape = RoundedCornerShape(20.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { sendAction() },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send",
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
