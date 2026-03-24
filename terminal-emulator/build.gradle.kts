@@ -8,6 +8,17 @@ android {
 
     defaultConfig {
         minSdk = 28
+        externalNativeBuild {
+            cmake {
+                cFlags("-std=c11")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path("src/main/jni/CMakeLists.txt")
+        }
     }
 
     compileOptions {
