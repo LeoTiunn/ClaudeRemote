@@ -128,7 +128,7 @@ fun TerminalView(
     )
 }
 
-private fun sendResizeToJs(view: WebView) {
+private fun sendResizeToJs(view: WebView, retries: Int = 10) {
     val w = view.width
     val h = view.height
     if (w > 0 && h > 0) {
@@ -139,5 +139,8 @@ private fun sendResizeToJs(view: WebView) {
         view.post {
             view.evaluateJavascript("if(window.setTermSize)setTermSize($cssW,$cssH)", null)
         }
+    } else if (retries > 0) {
+        DebugLog.log("WEBVIEW", "Layout not ready (${w}x${h}), retry in 200ms ($retries left)")
+        view.postDelayed({ sendResizeToJs(view, retries - 1) }, 200)
     }
 }
