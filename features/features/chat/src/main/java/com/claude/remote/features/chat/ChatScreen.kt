@@ -243,7 +243,7 @@ fun ChatScreen(
                 val keyboardController = LocalSoftwareKeyboardController.current
                 val sendAction = {
                     if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput)
+                        viewModel.sendRawEscape(termInput + "\r")
                         termInput = ""
                     }
                 }
@@ -318,7 +318,6 @@ fun ChatScreen(
                 onKey = { seq -> viewModel.sendRawEscape(seq) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .imePadding()
             )
         }
     }

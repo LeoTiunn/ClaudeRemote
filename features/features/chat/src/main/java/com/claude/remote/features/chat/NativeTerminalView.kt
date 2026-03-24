@@ -2,7 +2,6 @@ package com.claude.remote.features.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -72,7 +71,6 @@ fun NativeTerminalView(
                 color = Color(0xFFEAE1D9) // warm terminal foreground
             ),
             modifier = modifier
-                .fillMaxSize()
                 .background(Color(0xFF1C1917)) // warm terminal background
                 .verticalScroll(vertScrollState)
                 .horizontalScroll(rememberScrollState())
