@@ -90,19 +90,30 @@ class ChatViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            sshClient.outputStream.collect { chunk ->
-                if (sshClient.isAttachedToTmux) {
-                    _uiState.update { it.copy(
-                        isTerminalMode = true,
-                        isStreaming = true,
-                        outputChunkCount = it.outputChunkCount + 1
-                    ) }
-                    _terminalOutput.emit(chunk)
-                    // Direct write to WebView — bypasses flow collection in TerminalView
-                    writeToWebView(chunk)
-                } else {
-                    handleOutputChunk(chunk)
+            while (true) {
+                try {
+                    sshClient.outputStream.collect { chunk ->
+                        try {
+                            if (sshClient.isAttachedToTmux) {
+                                _uiState.update { it.copy(
+                                    isTerminalMode = true,
+                                    isStreaming = true,
+                                    outputChunkCount = it.outputChunkCount + 1
+                                ) }
+                                writeToWebView(chunk)
+                            } else {
+                                handleOutputChunk(chunk)
+                            }
+                        } catch (e: Exception) {
+                            DebugLog.log("CHAT", "Chunk processing error: ${e.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    DebugLog.log("CHAT", "Output collect failed: ${e.message}")
                 }
+                // If collect ended (stream closed), wait and retry
+                DebugLog.log("CHAT", "Output collect ended, retrying in 1s...")
+                kotlinx.coroutines.delay(1000)
             }
         }
 
