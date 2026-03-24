@@ -1,11 +1,10 @@
 package com.claude.remote.features.chat
 
 import android.content.Context
+import android.text.InputType
 import android.view.ViewGroup
-import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import android.view.inputmethod.InputConnectionWrapper
 import android.webkit.WebView
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,8 +33,10 @@ class TerminalWebViewHolder @Inject constructor() {
     fun getOrCreate(context: Context): WebView {
         return webView ?: object : WebView(context) {
             override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
-                val ic = super.onCreateInputConnection(outAttrs) ?: return null
-                return TerminalInputConnection(ic)
+                val ic = super.onCreateInputConnection(outAttrs)
+                outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                return ic
             }
         }.also {
             webView = it
@@ -55,32 +56,5 @@ class TerminalWebViewHolder @Inject constructor() {
         webView?.destroy()
         webView = null
         isInitialized = false
-    }
-}
-
-/**
- * Wraps the WebView InputConnection to handle IME composing:
- * - ASCII single chars (regular typing): commit immediately, skip prediction bar
- * - Non-ASCII (Chinese pinyin candidates, etc.): let composing work normally
- * - Swipe typing: commitText is called directly by Gboard, works as-is
- */
-private class TerminalInputConnection(
-    target: InputConnection
-) : InputConnectionWrapper(target, true) {
-
-    override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        if (text != null && text.length == 1 && text[0].code <= 127) {
-            // Single ASCII char (regular typing): commit immediately
-            return commitText(text, newCursorPosition)
-        }
-        // Multi-char (swipe candidates) or non-ASCII (Chinese): composing normally
-        return super.setComposingText(text, newCursorPosition)
-    }
-
-    private fun isPlainAscii(text: CharSequence): Boolean {
-        for (i in text.indices) {
-            if (text[i].code > 127) return false
-        }
-        return true
     }
 }
