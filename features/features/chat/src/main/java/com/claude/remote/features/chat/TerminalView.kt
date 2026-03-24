@@ -43,12 +43,11 @@ fun TerminalView(
             val session = holder.sshSession
             if (session != null && tv.currentSession != session) {
                 tv.attachSession(session)
+                // If view already has size, initialize emulator now
+                if (tv.mEmulator == null && tv.width > 0) {
+                    tv.updateSize()
+                }
             }
-            // Ensure emulator is sized even if onSizeChanged already fired before session attach
-            if (tv.currentSession != null && tv.mEmulator == null && tv.width > 0) {
-                tv.updateSize()
-            }
-            tv.requestLayout()
         },
         modifier = modifier.fillMaxSize()
     )
