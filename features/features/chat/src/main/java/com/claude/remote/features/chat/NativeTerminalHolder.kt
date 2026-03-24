@@ -11,6 +11,7 @@ import com.claude.remote.core.ssh.SshClient
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
+import android.util.TypedValue
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import javax.inject.Inject
@@ -34,6 +35,10 @@ class NativeTerminalHolder @Inject constructor(
         .getFloat("font_size", 16f)
 
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
+
+    /** Convert sp to px for Paint.setTextSize() which expects pixels. */
+    private fun spToPx(sp: Float): Int =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics).toInt()
 
     private val sessionClient = object : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
@@ -97,7 +102,7 @@ class NativeTerminalHolder @Inject constructor(
     fun getOrCreateView(context: Context): com.termux.view.TerminalView {
         return terminalView ?: com.termux.view.TerminalView(context, null).also { tv ->
             tv.setTerminalViewClient(viewClient)
-            tv.setTextSize(fontSize.toInt())
+            tv.setTextSize(spToPx(fontSize))
             tv.setBackgroundColor(0xFF1C1917.toInt()) // Match dark theme
             // Don't capture keyboard — we use native TextField
             tv.isFocusable = false
@@ -130,6 +135,6 @@ class NativeTerminalHolder @Inject constructor(
 
     fun setTextSize(size: Float) {
         fontSize = size
-        terminalView?.setTextSize(size.toInt())
+        terminalView?.setTextSize(spToPx(size))
     }
 }
