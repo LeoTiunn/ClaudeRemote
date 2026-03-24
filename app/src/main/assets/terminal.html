@@ -43,6 +43,7 @@ var lastHeightPx = 0;
 var isUserScrolling = false;
 var writeBuffer = [];
 var flushTimer = null;
+var scrollingSince = 0; // safety: auto-reset after 5s
 
 window.onerror = function(msg, url, line) {
   document.title = 'ERR: ' + msg;
@@ -147,6 +148,7 @@ try {
       if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
       velocity = 0;
       isUserScrolling = true;
+      scrollingSince = Date.now();
       if (e.touches.length === 1) {
         lastY = e.touches[0].clientY;
         lastTime = Date.now();
@@ -209,6 +211,15 @@ window.writeBase64 = function(b64) {
   try {
     var raw = b64ToUtf8(b64);
     writeCount++;
+    // Safety: if scrolling flag stuck for >5s, force flush
+    if (isUserScrolling && (Date.now() - scrollingSince > 5000)) {
+      isUserScrolling = false;
+      if (writeBuffer.length > 0) {
+        term.write(writeBuffer.join(''));
+        writeBuffer = [];
+      }
+      scrollingSince = 0;
+    }
     if (isUserScrolling) {
       writeBuffer.push(raw);
     } else {
