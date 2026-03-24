@@ -225,31 +225,15 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    TerminalView(
-                        outputFlow = viewModel.terminalOutput,
-                        onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
-                        onInput = { data -> viewModel.sendRawEscape(data) },
-                        webViewHolder = viewModel.webViewHolder,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    // Invisible EditText overlay to capture keyboard input
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { ctx ->
-                            TerminalInputOverlay(ctx).apply {
-                                onTerminalInput = { text ->
-                                    viewModel.sendRawEscape(text)
-                                }
-                                // Request focus so keyboard targets this EditText
-                                requestFocus()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .align(Alignment.BottomCenter)
-                    )
-                }
+                TerminalView(
+                    outputFlow = viewModel.terminalOutput,
+                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                    onInput = { data -> viewModel.sendRawEscape(data) },
+                    webViewHolder = viewModel.webViewHolder,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
