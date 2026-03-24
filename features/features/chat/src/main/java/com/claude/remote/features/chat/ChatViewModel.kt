@@ -92,7 +92,11 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             sshClient.outputStream.collect { chunk ->
                 if (sshClient.isAttachedToTmux) {
-                    _uiState.update { it.copy(isTerminalMode = true, isStreaming = true) }
+                    _uiState.update { it.copy(
+                        isTerminalMode = true,
+                        isStreaming = true,
+                        outputChunkCount = it.outputChunkCount + 1
+                    ) }
                     _terminalOutput.emit(chunk)
                     // Direct write to WebView — bypasses flow collection in TerminalView
                     writeToWebView(chunk)

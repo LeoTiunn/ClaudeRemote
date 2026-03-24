@@ -135,7 +135,8 @@ fun ChatScreen(
                         ConnectionStatusDot(state = uiState.connectionState)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            uiState.sessionName.ifEmpty { "Claude Remote" },
+                            (uiState.sessionName.ifEmpty { "Claude Remote" }) +
+                                if (uiState.isTerminalMode) " [${uiState.outputChunkCount}]" else "",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -181,6 +182,19 @@ fun ChatScreen(
                             else
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+
+                    // Refresh terminal — forces Ctrl+L redraw
+                    if (uiState.isTerminalMode) {
+                        IconButton(
+                            onClick = { viewModel.sendRawEscape("\u000c") }
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh terminal",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     IconButton(onClick = { showMenu = true }) {

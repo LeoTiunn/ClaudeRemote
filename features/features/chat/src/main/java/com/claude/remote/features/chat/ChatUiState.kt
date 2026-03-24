@@ -16,7 +16,8 @@ data class ChatUiState(
     val isReconnecting: Boolean = false,
     val isVoiceListening: Boolean = false,
     val voicePartialResult: String = "",
-    val wordWrap: Boolean = true
+    val wordWrap: Boolean = true,
+    val outputChunkCount: Int = 0
 )
 
 data class ChatMessage(
