@@ -3,6 +3,7 @@ package com.claude.remote.features.chat
 import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,14 +12,19 @@ import javax.inject.Singleton
  * WebView is display-only — keyboard input goes through native TextField.
  */
 @Singleton
-class TerminalWebViewHolder @Inject constructor() {
+class TerminalWebViewHolder @Inject constructor(
+    @ApplicationContext context: Context
+) {
     var webView: WebView? = null
         private set
 
     var isInitialized: Boolean = false
         private set
 
-    @Volatile var fontSize: Float = 13f
+    @Volatile var pageReady: Boolean = false
+
+    @Volatile var fontSize: Float = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        .getFloat("font_size", 16f)
     @Volatile var isDarkTheme: Boolean = true
 
     val outputBridge = TerminalOutputBridge()
