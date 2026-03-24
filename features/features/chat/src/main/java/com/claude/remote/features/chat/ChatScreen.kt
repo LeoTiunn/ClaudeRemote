@@ -114,9 +114,15 @@ fun ChatScreen(
             if (uiState.connectionState != ConnectionState.CONNECTED && uiState.sessionName.isNotEmpty()) {
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
-                // Redraw terminal after returning from background
+                // Resume WebView JS timers (paused by Android in background)
+                viewModel.webViewHolder.webView?.let { wv ->
+                    wv.post {
+                        wv.onResume()
+                        wv.resumeTimers()
+                    }
+                }
                 kotlinx.coroutines.delay(300)
-                viewModel.sendRawEscape("\u000c") // Ctrl+L
+                viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
             }
         }
     }
