@@ -59,9 +59,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -70,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -221,97 +218,112 @@ fun ChatScreen(
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .imePadding()
-        ) {
-            // Upload indicator
-            if (uiState.isUploading) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Text(
-                        "Uploading file...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (uiState.isTerminalMode) {
+        if (uiState.isTerminalMode) {
+            // Box layout: terminal full-screen (never resizes), input floats at bottom
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 TerminalView(
-                    outputFlow = viewModel.terminalOutput,
                     onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
                     webViewHolder = viewModel.webViewHolder,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                    modifier = Modifier.fillMaxSize()
                 )
 
-                // Text input — type, edit, then press Enter to send
-                var termInput by remember { mutableStateOf("") }
-                val focusRequester = remember { FocusRequester() }
-                val keyboardController = LocalSoftwareKeyboardController.current
-                val scope = rememberCoroutineScope()
-                val sendAction = {
-                    if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput + "\r")
-                        termInput = ""
-                    } else {
-                        viewModel.sendRawEscape("\r")
-                    }
-                }
-
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(300)
-                    focusRequester.requestFocus()
-                }
-
-                Row(
+                // Input area floats at bottom, moves with keyboard
+                Column(
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .imePadding()
                 ) {
-                    androidx.compose.material3.OutlinedTextField(
-                        value = termInput,
-                        onValueChange = { termInput = it },
-                        placeholder = { Text("Type here...", fontSize = 15.sp) },
-                        maxLines = 4,
-                        textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focusRequester),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onSend = { sendAction() }
-                        ),
-                        shape = RoundedCornerShape(20.dp)
+                    if (uiState.isUploading) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Text(
+                                "Uploading file...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Divider(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        thickness = 0.5.dp
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(
-                        onClick = { sendAction() },
-                        modifier = Modifier.size(44.dp)
+
+                    TerminalKeysBar(
+                        onKey = { seq -> viewModel.sendRawEscape(seq) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    var termInput by remember { mutableStateOf("") }
+                    val focusRequester = remember { FocusRequester() }
+                    val sendAction = {
+                        if (termInput.isNotEmpty()) {
+                            viewModel.sendRawEscape(termInput + "\r")
+                            termInput = ""
+                        } else {
+                            viewModel.sendRawEscape("\r")
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(300)
+                        focusRequester.requestFocus()
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "Send",
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                        androidx.compose.material3.OutlinedTextField(
+                            value = termInput,
+                            onValueChange = { termInput = it },
+                            placeholder = { Text("Type here...", fontSize = 15.sp) },
+                            maxLines = 4,
+                            textStyle = TextStyle(fontSize = 15.sp, fontFamily = FontFamily.Monospace),
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(focusRequester),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                onSend = { sendAction() }
+                            ),
+                            shape = RoundedCornerShape(20.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { sendAction() },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send",
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
-            } else {
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .imePadding()
+            ) {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     state = listState,
@@ -331,18 +343,17 @@ fun ChatScreen(
                         }
                     }
                 }
+
+                Divider(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    thickness = 0.5.dp
+                )
+
+                TerminalKeysBar(
+                    onKey = { seq -> viewModel.sendRawEscape(seq) },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-
-            Divider(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                thickness = 0.5.dp
-            )
-
-            TerminalKeysBar(
-                onKey = { seq -> viewModel.sendRawEscape(seq) },
-                modifier = Modifier
-                    .fillMaxWidth()
-            )
         }
     }
 }

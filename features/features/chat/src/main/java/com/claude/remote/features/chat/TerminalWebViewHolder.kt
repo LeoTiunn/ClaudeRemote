@@ -21,6 +21,8 @@ class TerminalWebViewHolder @Inject constructor() {
     @Volatile var fontSize: Float = 13f
     @Volatile var isDarkTheme: Boolean = true
 
+    val outputBridge = TerminalOutputBridge()
+
     var onResize: ((cols: Int, rows: Int) -> Unit)? = null
 
     fun getOrCreate(context: Context): WebView {

@@ -8,15 +8,11 @@ import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
 import com.claude.remote.core.tmux.TmuxSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import android.util.Base64
 import java.util.UUID
 import javax.inject.Inject
 
@@ -30,15 +26,6 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
-
-    // Raw terminal output for xterm.js WebView
-    // DROP_OLDEST prevents emit() from suspending and blocking the shell reader
-    private val _terminalOutput = MutableSharedFlow<String>(
-        replay = 0,
-        extraBufferCapacity = 512,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
-    )
-    val terminalOutput: Flow<String> = _terminalOutput.asSharedFlow()
 
     companion object {
         private val PROMPT_MARKERS = listOf(
@@ -156,9 +143,8 @@ class ChatViewModel @Inject constructor(
             // Capture scrollback history before attaching
             val history = tmuxSessionManager.capturePane(sessionName, sshClient)
             if (history.isNotBlank()) {
-                // Write captured history to xterm.js so user sees previous content
-                _terminalOutput.emit("\u001b[2J\u001b[H") // Clear screen first
-                _terminalOutput.emit(history)
+                webViewHolder.outputBridge.enqueue("\u001b[2J\u001b[H")
+                webViewHolder.outputBridge.enqueue(history)
             }
         } catch (e: Exception) {
             DebugLog.log("CHAT", "capturePane failed: ${e.message}")
@@ -347,36 +333,8 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    // Batch writes to WebView — fire and forget, no callback dependency
-    private val pendingOutput = StringBuilder()
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    @Volatile private var flushScheduled = false
-
     private fun writeToWebView(chunk: String) {
-        val wv = webViewHolder.webView ?: return
-        synchronized(pendingOutput) {
-            pendingOutput.append(chunk)
-            if (!flushScheduled) {
-                flushScheduled = true
-                mainHandler.postDelayed({
-                    val data: String
-                    synchronized(pendingOutput) {
-                        data = pendingOutput.toString()
-                        pendingOutput.clear()
-                        flushScheduled = false
-                    }
-                    if (data.isNotEmpty()) {
-                        val b64 = android.util.Base64.encodeToString(
-                            data.toByteArray(Charsets.UTF_8),
-                            android.util.Base64.NO_WRAP
-                        )
-                        try {
-                            wv.evaluateJavascript("writeBase64('$b64')", null)
-                        } catch (_: Exception) {}
-                    }
-                }, 100)
-            }
-        }
+        webViewHolder.outputBridge.enqueue(chunk)
     }
 
     fun sendRawEscape(sequence: String) {

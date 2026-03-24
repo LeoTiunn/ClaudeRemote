@@ -194,6 +194,16 @@ try {
   });
 
   if (window.AndroidBridge) window.AndroidBridge.onTerminalReady();
+
+  // Poll for terminal output from Android bridge (replaces evaluateJavascript)
+  setInterval(function() {
+    try {
+      var data = Android.poll();
+      if (data && data.length > 0) {
+        writeBase64(data);
+      }
+    } catch(e) {}
+  }, 32);
 } catch(e) {
   document.title = 'INIT ERR: ' + e.message;
 }
