@@ -120,20 +120,15 @@ fun ChatScreen(
                 viewModel.reconnect()
             } else if (uiState.isTerminalMode) {
                 viewModel.webViewHolder.webView?.let { wv ->
-                    // Step 1: resume WebView + JS timers
                     wv.post {
                         wv.onResume()
                         wv.resumeTimers()
-                    }
-                    // Step 2: wait for JS engine, then restart polling
-                    kotlinx.coroutines.delay(600)
-                    wv.post {
-                        @Suppress("DEPRECATION")
-                        wv.loadUrl("javascript:void(restartPolling())")
+                        // Nuclear: reload page to reinitialize xterm.js + polling
+                        wv.loadUrl("file:///android_asset/terminal.html")
                     }
                 }
-                // Step 3: wait for polling to start, then redraw
-                kotlinx.coroutines.delay(500)
+                // Wait for page load, then redraw terminal
+                kotlinx.coroutines.delay(1500)
                 viewModel.sendRawEscape("\u000c") // Ctrl+L
             }
         }
