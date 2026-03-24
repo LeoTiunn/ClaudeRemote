@@ -263,6 +263,8 @@ fun ChatScreen(
 
             TerminalKeysBar(
                 onKey = { seq -> viewModel.sendRawEscape(seq) },
+                chineseMode = viewModel.webViewHolder.chineseMode,
+                onToggleChinese = { viewModel.webViewHolder.toggleChineseMode() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding()
@@ -403,20 +405,21 @@ fun StreamingIndicator(
 @Composable
 fun TerminalKeysBar(
     onKey: (String) -> Unit,
+    chineseMode: Boolean = false,
+    onToggleChinese: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Best practice order: Esc, modifiers, tab variants, arrows
     val keys = listOf(
-        "Esc" to "\u001b",           // Escape
-        "C-c" to "\u0003",          // Ctrl+C (interrupt)
-        "C-b" to "\u0002",          // Ctrl+B (tmux prefix)
-        "Ent" to "\r",              // Enter / Return
-        "Tab" to "\t",                // Tab (autocomplete)
-        "⇧Tab" to "\u001b[Z",       // Shift+Tab (claude mode switch)
-        "←" to "\u001b[D",           // Arrow left
-        "↑" to "\u001b[A",           // Arrow up (history)
-        "↓" to "\u001b[B",           // Arrow down
-        "→" to "\u001b[C",           // Arrow right
+        "Esc" to "\u001b",
+        "C-c" to "\u0003",
+        "C-b" to "\u0002",
+        "Ent" to "\r",
+        "Tab" to "\t",
+        "⇧Tab" to "\u001b[Z",
+        "←" to "\u001b[D",
+        "↑" to "\u001b[A",
+        "↓" to "\u001b[B",
+        "→" to "\u001b[C",
     )
 
     Row(
@@ -424,6 +427,35 @@ fun TerminalKeysBar(
             .padding(horizontal = 4.dp, vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        // EN/中 toggle
+        var isChineseMode by remember { mutableStateOf(chineseMode) }
+        Surface(
+            onClick = {
+                onToggleChinese()
+                isChineseMode = !isChineseMode
+            },
+            shape = RoundedCornerShape(6.dp),
+            color = if (isChineseMode) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant,
+            tonalElevation = 2.dp,
+            modifier = Modifier
+                .weight(1f)
+                .focusable(false)
+        ) {
+            Text(
+                text = if (isChineseMode) "中" else "EN",
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                ),
+                color = if (isChineseMode) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+
         keys.forEach { (label, seq) ->
             Surface(
                 onClick = { onKey(seq) },
@@ -432,7 +464,6 @@ fun TerminalKeysBar(
                 tonalElevation = 2.dp,
                 modifier = Modifier
                     .weight(1f)
-                    // focusable(false) prevents stealing focus from xterm.js textarea
                     .focusable(false)
             ) {
                 Text(
