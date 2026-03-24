@@ -250,12 +250,12 @@ fun ChatScreen(
                     } else {
                         viewModel.sendRawEscape("\r")
                     }
+                    keyboardController?.hide()
                 }
 
                 LaunchedEffect(Unit) {
                     kotlinx.coroutines.delay(300)
                     focusRequester.requestFocus()
-                    keyboardController?.show()
                 }
 
                 Surface(
