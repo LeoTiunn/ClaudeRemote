@@ -55,6 +55,9 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(fontSize = size) }
         repository.setFontSize(size)
         webViewHolder.fontSize = size
+        webViewHolder.webView?.post {
+            webViewHolder.webView?.evaluateJavascript("if(window.setFontSize)setFontSize($size)", null)
+        }
     }
 
     fun onPasswordSave(password: String) {

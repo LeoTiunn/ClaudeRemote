@@ -230,9 +230,10 @@ fun ChatScreen(
             }
 
             if (uiState.isTerminalMode) {
-                NativeTerminalView(
+                TerminalView(
                     outputFlow = viewModel.terminalOutput,
-                    fontSize = viewModel.webViewHolder.fontSize,
+                    onResize = { cols, rows -> viewModel.resizeTerminal(cols, rows) },
+                    webViewHolder = viewModel.webViewHolder,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
