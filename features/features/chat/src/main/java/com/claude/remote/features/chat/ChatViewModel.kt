@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.claude.remote.core.ssh.DebugLog
 import com.claude.remote.core.ssh.SshClient
+import com.claude.remote.core.tmux.TmuxSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,8 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val sshClient: SshClient,
     val terminalHolder: NativeTerminalHolder,
-    private val fileUploadManager: FileUploadManager
+    private val fileUploadManager: FileUploadManager,
+    private val tmuxSessionManager: TmuxSessionManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -108,6 +110,30 @@ class ChatViewModel @Inject constructor(
         if (sessionName.isNotEmpty()) {
             connectAndAttach(sessionName)
         }
+    }
+
+    fun loadAvailableSessions() {
+        _uiState.update { it.copy(isLoadingSessions = true) }
+        viewModelScope.launch {
+            // Command shell is independent of terminal channel — temporarily
+            // allow executeCommand while terminal is attached to tmux
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
+            try {
+                val sessions = tmuxSessionManager.listSessions(sshClient)
+                _uiState.update { it.copy(availableSessions = sessions, isLoadingSessions = false) }
+            } catch (e: Exception) {
+                DebugLog.log("CHAT", "Failed to load sessions: ${e.message}")
+                _uiState.update { it.copy(isLoadingSessions = false) }
+            } finally {
+                sshClient.isAttachedToTmux = wasAttached
+            }
+        }
+    }
+
+    fun switchSession(sessionName: String) {
+        if (sessionName == _uiState.value.sessionName) return
+        connectAndAttach(sessionName)
     }
 
     fun sendRawEscape(sequence: String) {
