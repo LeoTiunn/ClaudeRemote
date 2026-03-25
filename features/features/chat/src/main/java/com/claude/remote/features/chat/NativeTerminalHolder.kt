@@ -119,10 +119,20 @@ class NativeTerminalHolder @Inject constructor(
 
     private fun buildTerminalTypeface(context: Context): android.graphics.Typeface {
         try {
-            // Sarasa Mono SC: Iosevka Latin + Source Han Sans CJK, consistent 2:1 metrics
-            return android.graphics.Typeface.createFromAsset(
-                context.assets, "fonts/SarasaMonoSC-Regular.ttf"
-            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                // API 29+: CJK-only Sarasa as custom font, system monospace as fallback for Latin
+                val sarasaFont = android.graphics.fonts.Font.Builder(
+                    context.assets, "fonts/SarasaMonoSC-Regular.ttf"
+                ).build()
+                val sarasaFamily = android.graphics.fonts.FontFamily.Builder(sarasaFont).build()
+                return android.graphics.Typeface.CustomFallbackBuilder(sarasaFamily)
+                    .setSystemFallback("monospace")
+                    .build()
+            } else {
+                return android.graphics.Typeface.createFromAsset(
+                    context.assets, "fonts/SarasaMonoSC-Regular.ttf"
+                )
+            }
         } catch (e: Exception) {
             DebugLog.log("TERM", "Failed to load terminal font: ${e.message}")
             return android.graphics.Typeface.MONOSPACE
