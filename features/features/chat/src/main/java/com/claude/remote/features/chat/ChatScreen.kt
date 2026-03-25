@@ -268,6 +268,18 @@ fun ChatScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
+                                            "Reconnect",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    onClick = {
+                                        showSessionSheet = false
+                                        viewModel.reconnect()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
                                             "Refresh Token",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
