@@ -16,6 +16,7 @@ data class ChatUiState(
     val uploadFileName: String? = null,
     val error: String? = null,
     val isReconnecting: Boolean = false,
+    val statusMessage: String? = null,
     val isVoiceListening: Boolean = false,
     val voicePartialResult: String = "",
     val wordWrap: Boolean = true,

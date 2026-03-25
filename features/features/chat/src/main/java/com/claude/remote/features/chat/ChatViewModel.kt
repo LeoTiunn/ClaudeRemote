@@ -67,7 +67,9 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(
             isTerminalMode = true,
             isStreaming = true,
-            sessionName = sessionName
+            isReconnecting = true,
+            sessionName = sessionName,
+            statusMessage = "Connecting..."
         ) }
 
         viewModelScope.launch {
@@ -75,19 +77,23 @@ class ChatViewModel @Inject constructor(
                 // Ensure SSH is connected before opening terminal channel
                 if (sshClient.connectionState.value != com.claude.remote.core.ui.components.ConnectionState.CONNECTED) {
                     DebugLog.log("CHAT", "SshClient not connected, connecting first...")
+                    _uiState.update { it.copy(statusMessage = "Connecting to SSH...") }
                     sshClient.connect(sshClient.host, sshClient.port, sshClient.username, sshClient.password)
                 }
 
                 // Open new shell channel — retry once on failure (handles stale session)
+                _uiState.update { it.copy(statusMessage = "Opening terminal...") }
                 try {
                     terminalHolder.createSshSession()
                 } catch (e: Exception) {
                     DebugLog.log("CHAT", "First createSshSession failed: ${e.message}, retrying with fresh connection")
+                    _uiState.update { it.copy(statusMessage = "Reconnecting SSH...") }
                     sshClient.connect(sshClient.host, sshClient.port, sshClient.username, sshClient.password)
                     terminalHolder.createSshSession()
                 }
 
                 // Wait for shell prompt, then attach tmux
+                _uiState.update { it.copy(statusMessage = "Attaching to $sessionName...") }
                 kotlinx.coroutines.delay(300)
                 if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
                     DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
@@ -96,10 +102,13 @@ class ChatViewModel @Inject constructor(
                     sshClient.currentSessionName = sessionName
                     sshClient.isAttachedToTmux = true
                 }
+                _uiState.update { it.copy(isReconnecting = false, statusMessage = null) }
             } catch (e: Exception) {
                 DebugLog.log("CHAT", "SSH connect failed: ${e.message}")
                 _uiState.update { it.copy(
-                    error = "SSH failed: ${e.message}"
+                    error = "SSH failed: ${e.message}",
+                    isReconnecting = false,
+                    statusMessage = null
                 ) }
             }
         }
