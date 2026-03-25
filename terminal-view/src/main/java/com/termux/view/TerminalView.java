@@ -40,6 +40,7 @@ import androidx.annotation.RequiresApi;
 import com.termux.terminal.KeyHandler;
 import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
+import com.termux.terminal.TextStyle;
 import com.termux.view.textselection.TextSelectionCursorController;
 
 /** View displaying and interacting with a {@link TerminalSession}. */
@@ -1010,6 +1011,10 @@ public final class TerminalView extends View {
         if (mEmulator == null) {
             canvas.drawColor(0XFF000000);
         } else {
+            // Fill entire canvas with terminal background to avoid gaps/dots at bottom
+            final int[] palette = mEmulator.mColors.mCurrentColors;
+            canvas.drawColor(palette[TextStyle.COLOR_INDEX_BACKGROUND]);
+
             // render the terminal view and highlight any selected text
             int[] sel = mDefaultSelectors;
             if (mTextSelectionCursorController != null) {

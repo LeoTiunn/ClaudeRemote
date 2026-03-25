@@ -32,16 +32,24 @@ class ChatViewModel @Inject constructor(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     init {
+        // Keep dot in sync with actual SSH connection state
+        viewModelScope.launch {
+            sshClient.connectionState.collect { state ->
+                _uiState.update { it.copy(connectionState = state) }
+            }
+        }
+
         val sessionName = sshClient.currentSessionName
-        if (terminalHolder.isSessionRunning()) {
+        if (terminalHolder.isSessionRunning() && terminalHolder.attachedSessionName == sessionName) {
+            // Same session — reattach existing terminal view
             _uiState.update { it.copy(
                 isTerminalMode = true,
                 isStreaming = true,
-                sessionName = sessionName,
-                connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
+                sessionName = sessionName
             ) }
             terminalHolder.attachExistingSession()
         } else if (sessionName.isNotEmpty()) {
+            // New or different session — destroy old and connect fresh
             connectAndAttach(sessionName)
         }
     }
@@ -57,8 +65,7 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(
             isTerminalMode = true,
             isStreaming = true,
-            sessionName = sessionName,
-            connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTING
+            sessionName = sessionName
         ) }
 
         viewModelScope.launch {
@@ -72,22 +79,18 @@ class ChatViewModel @Inject constructor(
                 // Open new shell channel on existing SSH session
                 terminalHolder.createSshSession()
 
-                _uiState.update { it.copy(
-                    connectionState = com.claude.remote.core.ui.components.ConnectionState.CONNECTED
-                ) }
-
                 // Wait for shell prompt, then attach tmux
                 kotlinx.coroutines.delay(1000)
                 if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
                     DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
                     terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
+                    terminalHolder.attachedSessionName = sessionName
                     sshClient.currentSessionName = sessionName
                     sshClient.isAttachedToTmux = true
                 }
             } catch (e: Exception) {
                 DebugLog.log("CHAT", "SSH connect failed: ${e.message}")
                 _uiState.update { it.copy(
-                    connectionState = com.claude.remote.core.ui.components.ConnectionState.DISCONNECTED,
                     error = "SSH failed: ${e.message}"
                 ) }
             }

@@ -45,8 +45,13 @@ class SessionSwitcherViewModel @Inject constructor(
 
     /** Called when the Sessions screen becomes visible (e.g. returning from Chat) */
     fun onScreenVisible() {
-        _uiState.update { it.copy(repoHistory = settingsRepository.getRepoHistory()) }
-        if (sshClient.connectionState.value == ConnectionState.CONNECTED) {
+        // Re-sync connection state from actual SSH client (may have changed while on ChatScreen)
+        val currentState = sshClient.connectionState.value
+        _uiState.update { it.copy(
+            repoHistory = settingsRepository.getRepoHistory(),
+            connectionState = currentState
+        ) }
+        if (currentState == ConnectionState.CONNECTED) {
             loadSessionsAndRepos()
         }
     }
