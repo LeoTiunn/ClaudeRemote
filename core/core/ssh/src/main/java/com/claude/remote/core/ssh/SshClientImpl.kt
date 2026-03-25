@@ -342,20 +342,28 @@ class SshClientImpl @Inject constructor() : SshClient {
     override suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle {
         return withContext(Dispatchers.IO) {
             val session = jschSession ?: throw IllegalStateException("SSH not connected")
-            DebugLog.log("SSH", "Opening new shell channel on existing session")
+
+            DebugLog.log("SSH", "Preparing terminal shell channel (not connecting yet)")
 
             val channel = session.openChannel("shell") as ChannelShell
             channel.setPtyType("xterm-256color", cols, rows, 0, 0)
 
+            // Get streams BEFORE connect — required by JSch
             val input = channel.inputStream
             val output = channel.outputStream
 
-            channel.connect(10_000)
-            DebugLog.log("SSH", "New shell channel connected: ${channel.isConnected}")
-
+            // DON'T connect yet — caller must start reader thread first,
+            // then call connectChannel to avoid PipedInputStream timeout
             ShellChannelHandle(
                 inputStream = input,
                 outputStream = output,
+                connectChannel = {
+                    withContext(Dispatchers.IO) {
+                        DebugLog.log("SSH", "Connecting terminal shell channel now...")
+                        channel.connect(10_000)
+                        DebugLog.log("SSH", "Terminal shell channel connected: ${channel.isConnected}")
+                    }
+                },
                 resizePty = { c, r ->
                     try {
                         channel.setPtySize(c, r, c * 8, r * 16)

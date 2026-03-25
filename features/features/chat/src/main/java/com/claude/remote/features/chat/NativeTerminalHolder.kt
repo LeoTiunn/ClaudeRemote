@@ -118,30 +118,45 @@ class NativeTerminalHolder @Inject constructor(
     /**
      * Open a new shell channel on the existing SshClient session and bridge
      * it to Termux's TerminalEmulator via SshTerminalSession.
+     *
+     * Sequence matters to avoid JSch PipedInputStream timeout:
+     * 1. Prepare channel + get streams (no connect yet)
+     * 2. Create SshTerminalSession + start reader thread (reader blocks on read())
+     * 3. Connect channel — data flows, reader is already waiting
      */
     suspend fun createSshSession(): SshTerminalSession {
         DebugLog.log("TERM", "Opening terminal channel on existing SSH session")
 
-        // Open a new shell channel on the shared SSH session (IO thread)
+        // Step 1: Prepare channel (get streams, but DON'T connect)
         val handle = sshClient.openShellChannel(80, 24)
         channelHandle = handle
 
-        // Create SshTerminalSession on MAIN thread (Handler needs Looper)
-        return withContext(Dispatchers.Main) {
-            val sshTermSession = SshTerminalSession(sessionClient)
-            termSession = sshTermSession
+        // Step 2: Create session + start reader/writer threads on MAIN thread
+        val sshTermSession = withContext(Dispatchers.Main) {
+            val session = SshTerminalSession(sessionClient)
+            termSession = session
 
-            sshTermSession.initializeWithStreams(
+            session.initializeWithStreams(
                 80, 24, 0, 0,
                 handle.inputStream, handle.outputStream
             ) { newCols, newRows ->
                 handle.resizePty(newCols, newRows)
             }
-            terminalView?.attachSession(sshTermSession)
 
-            DebugLog.log("TERM", "SshTerminalSession initialized")
-            sshTermSession
+            DebugLog.log("TERM", "Reader/writer threads started, now connecting channel...")
+            session
         }
+
+        // Step 3: Connect channel — reader thread is already waiting on read()
+        handle.connectChannel()
+
+        // Step 4: Attach view on Main
+        withContext(Dispatchers.Main) {
+            terminalView?.attachSession(sshTermSession)
+            DebugLog.log("TERM", "SshTerminalSession initialized and attached")
+        }
+
+        return sshTermSession
     }
 
     fun attachExistingSession() {

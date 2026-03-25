@@ -9,6 +9,7 @@ import java.io.OutputStream
 data class ShellChannelHandle(
     val inputStream: InputStream,
     val outputStream: OutputStream,
+    val connectChannel: suspend () -> Unit,
     val resizePty: (cols: Int, rows: Int) -> Unit,
     val disconnect: () -> Unit
 )
