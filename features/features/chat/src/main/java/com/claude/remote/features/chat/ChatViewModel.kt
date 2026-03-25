@@ -154,20 +154,36 @@ class ChatViewModel @Inject constructor(
 
     fun refreshToken() {
         viewModelScope.launch {
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
             try {
-                // 1. Exit Claude CLI
-                terminalHolder.writeToSession("/exit\r")
-                kotlinx.coroutines.delay(1500)
+                // 1. Get all active sessions
+                val sessions = tmuxSessionManager.listSessions(sshClient)
+                val sessionNames = sessions.map { it.name }
+                DebugLog.log("CHAT", "Refresh token: ${sessionNames.size} sessions to restart")
 
-                // 2. Refresh token
-                terminalHolder.writeToSession("ca refresh\r")
-                kotlinx.coroutines.delay(5000)
+                // 2. Refresh token (once)
+                sshClient.executeCommand("ca refresh")
+                DebugLog.log("CHAT", "Token refreshed")
 
-                // 3. Restart Claude CLI with --continue
-                terminalHolder.writeToSession("ccx\r")
+                // 3. Exit Claude CLI in all sessions
+                for (name in sessionNames) {
+                    val escaped = name.replace("'", "'\\''")
+                    sshClient.executeCommand("tmux send-keys -t '$escaped' '/exit' Enter")
+                }
+                kotlinx.coroutines.delay(3000)
+
+                // 4. Restart Claude CLI in all sessions
+                for (name in sessionNames) {
+                    val escaped = name.replace("'", "'\\''")
+                    sshClient.executeCommand("tmux send-keys -t '$escaped' 'ccx' Enter")
+                }
+                DebugLog.log("CHAT", "All ${sessionNames.size} sessions restarted")
             } catch (e: Exception) {
                 DebugLog.log("CHAT", "Refresh token failed: ${e.message}")
                 _uiState.update { it.copy(error = "Refresh token failed: ${e.message}") }
+            } finally {
+                sshClient.isAttachedToTmux = wasAttached
             }
         }
     }

@@ -493,7 +493,7 @@ fun ChatScreen(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showRefreshTokenConfirm = false },
             title = { Text("Refresh Token") },
-            text = { Text("This will exit Claude CLI, refresh the API token, and restart. Current conversation will be resumed with --continue.") },
+            text = { Text("This will refresh the API token and restart Claude CLI in ALL active sessions.") },
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = {
