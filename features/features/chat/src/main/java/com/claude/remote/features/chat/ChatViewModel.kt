@@ -134,18 +134,20 @@ class ChatViewModel @Inject constructor(
     fun switchSession(sessionName: String) {
         if (sessionName == _uiState.value.sessionName) return
         if (terminalHolder.isSessionRunning()) {
-            // Fast path: use tmux switch-client via prefix + command mode
+            // Fast path: use command shell to tell tmux to switch the terminal client
             // No need to destroy/recreate terminal channel — instant switch
             viewModelScope.launch {
-                terminalHolder.writeBytes(byteArrayOf(0x02)) // Ctrl+B (tmux prefix)
-                kotlinx.coroutines.delay(100)
-                terminalHolder.writeToSession(":switch-client -t '$sessionName'\r")
+                val wasAttached = sshClient.isAttachedToTmux
+                sshClient.isAttachedToTmux = false
+                try {
+                    sshClient.executeCommand("tmux switch-client -t '${sessionName.replace("'", "'\\''")}'")
+                } catch (_: Exception) {}
+                sshClient.isAttachedToTmux = wasAttached
                 terminalHolder.attachedSessionName = sessionName
                 sshClient.currentSessionName = sessionName
                 _uiState.update { it.copy(sessionName = sessionName) }
             }
         } else {
-            // No running session — full connect
             connectAndAttach(sessionName)
         }
     }
