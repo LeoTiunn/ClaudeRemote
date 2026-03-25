@@ -109,8 +109,7 @@ public final class TerminalRenderer {
                 // If this is detected, we draw this code point scaled to match what wcwidth() expects.
                 final float measuredCodePointWidth = (codePoint < asciiMeasures.length) ? asciiMeasures[codePoint] : mTextPaint.measureText(line,
                     currentCharIndex, charsForCodePoint);
-                // Don't flag mismatch for wide chars (CJK) — slight overflow looks better than squishing
-                final boolean fontWidthMismatch = (codePointWcWidth <= 1) && Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
+                final boolean fontWidthMismatch = Math.abs(measuredCodePointWidth / mFontWidth - codePointWcWidth) > 0.01;
 
                 if (style != lastRunStyle || insideCursor != lastRunInsideCursor || insideSelection != lastRunInsideSelection || fontWidthMismatch || lastRunFontWidthMismatch) {
                     if (column == 0) {
@@ -194,7 +193,9 @@ public final class TerminalRenderer {
         boolean savedMatrix = false;
         if (Math.abs(mes - runWidthColumns) > 0.01) {
             canvas.save();
-            canvas.scale(runWidthColumns / mes, 1.f);
+            float scale = runWidthColumns / mes;
+            // Uniform scaling preserves aspect ratio (no squishing for CJK)
+            canvas.scale(scale, scale);
             left *= mes / runWidthColumns;
             right *= mes / runWidthColumns;
             savedMatrix = true;
