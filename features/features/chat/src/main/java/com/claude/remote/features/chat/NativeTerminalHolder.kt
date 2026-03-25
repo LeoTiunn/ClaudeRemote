@@ -125,24 +125,21 @@ class NativeTerminalHolder @Inject constructor(
     suspend fun createSshSession(): SshTerminalSession {
         DebugLog.log("TERM", "Creating SSH terminal session")
 
-        // Step 1: Create SshTerminalSession + initialize emulator on MAIN thread
-        // Must happen BEFORE channel.connect() so mEmulator and mRunning are ready
+        // Step 1: Create SshTerminalSession + emulator on MAIN (Handler needs Looper)
         val sshTermSession = withContext(Dispatchers.Main) {
             val session = SshTerminalSession(sessionClient)
+            session.initializeEmulator(80, 24)
             termSession = session
-            // Initialize emulator now — resize callback will be set after channel opens
-            session.initializeEmulatorForSsh(80, 24, 0, 0, null)
             session
         }
 
-        // Step 2: Open channel with direct stream bridge (connects immediately)
-        // mEmulator is set and mRunning is true, so data flows safely
-        val handle = sshClient.openShellChannel(
-            80, 24,
-            sshTermSession.sshDataReceiver,
-            sshTermSession.userInputProvider
-        )
+        // Step 2: Open channel + start reader IMMEDIATELY on IO thread
+        // Reader must start right after connect — no thread switching gap
+        val handle = sshClient.openShellChannel(80, 24)
         channelHandle = handle
+
+        // Start reader/writer RIGHT NOW on IO thread — same context as channel.connect()
+        sshTermSession.startIo(handle.inputStream, handle.outputStream)
 
         // Step 3: Set resize callback + attach view on Main
         withContext(Dispatchers.Main) {
@@ -150,7 +147,7 @@ class NativeTerminalHolder @Inject constructor(
                 handle.resizePty(newCols, newRows)
             }
             terminalView?.attachSession(sshTermSession)
-            DebugLog.log("TERM", "SshTerminalSession initialized and attached")
+            DebugLog.log("TERM", "SshTerminalSession attached")
         }
 
         return sshTermSession

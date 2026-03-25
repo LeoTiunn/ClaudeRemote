@@ -340,28 +340,25 @@ class SshClientImpl @Inject constructor() : SshClient {
             .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
     }
 
-    override suspend fun openShellChannel(
-        cols: Int, rows: Int,
-        sshDataReceiver: OutputStream,
-        userInputProvider: InputStream
-    ): ShellChannelHandle {
+    override suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle {
         return withContext(Dispatchers.IO) {
             val session = jschSession ?: throw IllegalStateException("SSH not connected")
 
-            DebugLog.log("SSH", "Opening terminal shell channel with direct streams")
+            DebugLog.log("SSH", "Opening terminal shell channel")
 
             val channel = session.openChannel("shell") as ChannelShell
             channel.setPtyType("xterm-256color", cols, rows, 0, 0)
 
-            // Set custom streams BEFORE connect — JSch writes/reads directly
-            // to/from these instead of using PipedInputStream
-            channel.setOutputStream(sshDataReceiver)
-            channel.setInputStream(userInputProvider)
+            // Get streams BEFORE connect (required by JSch)
+            val input = channel.inputStream
+            val output = channel.outputStream
 
             channel.connect(10_000)
             DebugLog.log("SSH", "Terminal shell channel connected: ${channel.isConnected}")
 
             ShellChannelHandle(
+                inputStream = input,
+                outputStream = output,
                 resizePty = { c, r ->
                     try {
                         channel.setPtySize(c, r, c * 8, r * 16)

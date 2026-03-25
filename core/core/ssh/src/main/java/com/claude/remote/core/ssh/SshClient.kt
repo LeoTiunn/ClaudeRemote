@@ -7,6 +7,8 @@ import java.io.InputStream
 import java.io.OutputStream
 
 data class ShellChannelHandle(
+    val inputStream: InputStream,
+    val outputStream: OutputStream,
     val resizePty: (cols: Int, rows: Int) -> Unit,
     val disconnect: () -> Unit
 )
@@ -32,12 +34,8 @@ interface SshClient {
 
     /**
      * Open a new shell channel on the existing SSH session.
-     * Uses channel.setOutputStream/setInputStream with the provided streams
-     * so JSch writes directly to them — no PipedInputStream.
+     * Returns handle with streams and connect/resize/disconnect callbacks.
+     * Channel is already connected when returned.
      */
-    suspend fun openShellChannel(
-        cols: Int, rows: Int,
-        sshDataReceiver: OutputStream,
-        userInputProvider: InputStream
-    ): ShellChannelHandle
+    suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle
 }
