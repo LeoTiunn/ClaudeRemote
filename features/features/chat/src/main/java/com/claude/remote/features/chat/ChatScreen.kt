@@ -55,15 +55,12 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -151,32 +148,87 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.combinedClickable(
-                            onClick = {
-                                if (uiState.isTerminalMode) {
-                                    viewModel.loadAvailableSessions()
-                                    showSessionSheet = true
-                                }
-                            },
-                            onLongClick = {}
-                        )
-                    ) {
-                        ConnectionStatusDot(state = uiState.connectionState)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            uiState.sessionName.ifEmpty { "Claude Remote" },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        if (uiState.isTerminalMode) {
-                            Icon(
-                                Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Switch session",
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.combinedClickable(
+                                onClick = {
+                                    if (uiState.isTerminalMode) {
+                                        viewModel.loadAvailableSessions()
+                                        showSessionSheet = true
+                                    }
+                                },
+                                onLongClick = {}
                             )
+                        ) {
+                            ConnectionStatusDot(state = uiState.connectionState)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                uiState.sessionName.ifEmpty { "Claude Remote" },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            if (uiState.isTerminalMode) {
+                                Icon(
+                                    Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Switch session",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Session dropdown
+                        DropdownMenu(
+                            expanded = showSessionSheet,
+                            onDismissRequest = { showSessionSheet = false }
+                        ) {
+                            if (uiState.isLoadingSessions && uiState.availableSessions.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                }
+                            } else {
+                                uiState.availableSessions.forEach { session ->
+                                    val isCurrent = session.name == uiState.sessionName
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                session.name,
+                                                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                    else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        if (isCurrent) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                                    )
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            if (isCurrent) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = "Current",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            showSessionSheet = false
+                                            viewModel.switchSession(session.name)
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -404,78 +456,6 @@ fun ChatScreen(
         }
     }
 
-    // Session switcher bottom sheet
-    if (showSessionSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSessionSheet = false },
-            containerColor = MaterialTheme.colorScheme.surface
-        ) {
-            Text(
-                "Sessions",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-            )
-
-            if (uiState.isLoadingSessions && uiState.availableSessions.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                }
-            } else {
-                uiState.availableSessions.forEach { session ->
-                    val isCurrent = session.name == uiState.sessionName
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                session.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (isCurrent) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurface
-                            )
-                        },
-                        supportingContent = {
-                            Text(
-                                session.windowName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        leadingContent = {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isCurrent) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                                    )
-                            )
-                        },
-                        trailingContent = {
-                            if (isCurrent) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "Current",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        },
-                        modifier = Modifier.combinedClickable(
-                            onClick = {
-                                showSessionSheet = false
-                                viewModel.switchSession(session.name)
-                            }
-                        )
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
