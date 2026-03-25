@@ -119,39 +119,34 @@ class NativeTerminalHolder @Inject constructor(
      * Open a new shell channel on the existing SshClient session and bridge
      * it to Termux's TerminalEmulator via SshTerminalSession.
      *
-     * Sequence matters to avoid JSch PipedInputStream timeout:
-     * 1. Prepare channel + get streams (no connect yet)
-     * 2. Create SshTerminalSession + start reader thread (reader blocks on read())
-     * 3. Connect channel — data flows, reader is already waiting
+     * Uses channel.setOutputStream/setInputStream so JSch writes directly
+     * to our ByteQueue — no PipedInputStream, no reader/writer threads.
      */
     suspend fun createSshSession(): SshTerminalSession {
-        DebugLog.log("TERM", "Opening terminal channel on existing SSH session")
+        DebugLog.log("TERM", "Creating SSH terminal session")
 
-        // Step 1: Prepare channel (get streams, but DON'T connect)
-        val handle = sshClient.openShellChannel(80, 24)
-        channelHandle = handle
-
-        // Step 2: Create session + start reader/writer threads on MAIN thread
+        // Step 1: Create SshTerminalSession on MAIN thread (Handler needs Looper)
         val sshTermSession = withContext(Dispatchers.Main) {
             val session = SshTerminalSession(sessionClient)
             termSession = session
-
-            session.initializeWithStreams(
-                80, 24, 0, 0,
-                handle.inputStream, handle.outputStream
-            ) { newCols, newRows ->
-                handle.resizePty(newCols, newRows)
-            }
-
-            DebugLog.log("TERM", "Reader/writer threads started, now connecting channel...")
             session
         }
 
-        // Step 3: Connect channel — reader thread is already waiting on read()
-        handle.connectChannel()
+        // Step 2: Open channel with direct stream bridge (connects immediately)
+        val handle = sshClient.openShellChannel(
+            80, 24,
+            sshTermSession.sshDataReceiver,
+            sshTermSession.userInputProvider
+        )
+        channelHandle = handle
 
-        // Step 4: Attach view on Main
+        // Step 3: Initialize emulator + attach view on Main
         withContext(Dispatchers.Main) {
+            sshTermSession.initializeEmulatorForSsh(
+                80, 24, 0, 0
+            ) { newCols, newRows ->
+                handle.resizePty(newCols, newRows)
+            }
             terminalView?.attachSession(sshTermSession)
             DebugLog.log("TERM", "SshTerminalSession initialized and attached")
         }

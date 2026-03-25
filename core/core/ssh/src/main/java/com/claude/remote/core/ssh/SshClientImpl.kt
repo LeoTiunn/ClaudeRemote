@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.Properties
 import javax.inject.Inject
@@ -339,31 +340,28 @@ class SshClientImpl @Inject constructor() : SshClient {
             .replace(Regex("[\\x00-\\x08\\x0e-\\x1f]"), "")  // control chars except \t \n \r
     }
 
-    override suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle {
+    override suspend fun openShellChannel(
+        cols: Int, rows: Int,
+        sshDataReceiver: OutputStream,
+        userInputProvider: InputStream
+    ): ShellChannelHandle {
         return withContext(Dispatchers.IO) {
             val session = jschSession ?: throw IllegalStateException("SSH not connected")
 
-            DebugLog.log("SSH", "Preparing terminal shell channel (not connecting yet)")
+            DebugLog.log("SSH", "Opening terminal shell channel with direct streams")
 
             val channel = session.openChannel("shell") as ChannelShell
             channel.setPtyType("xterm-256color", cols, rows, 0, 0)
 
-            // Get streams BEFORE connect — required by JSch
-            val input = channel.inputStream
-            val output = channel.outputStream
+            // Set custom streams BEFORE connect — JSch writes/reads directly
+            // to/from these instead of using PipedInputStream
+            channel.setOutputStream(sshDataReceiver)
+            channel.setInputStream(userInputProvider)
 
-            // DON'T connect yet — caller must start reader thread first,
-            // then call connectChannel to avoid PipedInputStream timeout
+            channel.connect(10_000)
+            DebugLog.log("SSH", "Terminal shell channel connected: ${channel.isConnected}")
+
             ShellChannelHandle(
-                inputStream = input,
-                outputStream = output,
-                connectChannel = {
-                    withContext(Dispatchers.IO) {
-                        DebugLog.log("SSH", "Connecting terminal shell channel now...")
-                        channel.connect(10_000)
-                        DebugLog.log("SSH", "Terminal shell channel connected: ${channel.isConnected}")
-                    }
-                },
                 resizePty = { c, r ->
                     try {
                         channel.setPtySize(c, r, c * 8, r * 16)
