@@ -192,13 +192,15 @@ public final class TerminalRenderer {
         mes = mes / mFontWidth;
         boolean savedMatrix = false;
         if (Math.abs(mes - runWidthColumns) > 0.01) {
-            canvas.save();
-            float scale = runWidthColumns / mes;
-            // Uniform scaling preserves aspect ratio (no squishing for CJK)
-            canvas.scale(scale, scale);
-            left *= mes / runWidthColumns;
-            right *= mes / runWidthColumns;
-            savedMatrix = true;
+            // Only scale single-width chars (emoji etc). Skip scaling for wide chars (CJK)
+            // to avoid size/proportion issues — a few pixels of overflow is invisible.
+            if (runWidthColumns < 2) {
+                canvas.save();
+                canvas.scale(runWidthColumns / mes, 1.f);
+                left *= mes / runWidthColumns;
+                right *= mes / runWidthColumns;
+                savedMatrix = true;
+            }
         }
 
         if (backColor != palette[TextStyle.COLOR_INDEX_BACKGROUND]) {
