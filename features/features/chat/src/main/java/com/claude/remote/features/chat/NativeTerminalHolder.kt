@@ -104,7 +104,14 @@ class NativeTerminalHolder @Inject constructor(
     }
 
     fun getOrCreateView(context: Context): com.termux.view.TerminalView {
-        return terminalView ?: com.termux.view.TerminalView(context, null).also { tv ->
+        // Always create a fresh view with the current Activity context
+        // Old view may hold stale Activity reference after rotation
+        val existing = terminalView
+        if (existing != null && existing.context === context) {
+            return existing
+        }
+
+        return com.termux.view.TerminalView(context, null).also { tv ->
             tv.setTerminalViewClient(viewClient)
             tv.setTextSize(spToPx(fontSize))
             tv.setBackgroundColor(0xFF1C1917.toInt())
