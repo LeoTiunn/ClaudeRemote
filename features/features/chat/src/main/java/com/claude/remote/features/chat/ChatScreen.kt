@@ -228,6 +228,19 @@ fun ChatScreen(
                                         }
                                     )
                                 }
+                                Divider()
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "+ New Session",
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        showSessionSheet = false
+                                        onNavigateToSessions()
+                                    }
+                                )
                             }
                         }
                     }
@@ -285,10 +298,6 @@ fun ChatScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Sessions") },
-                            onClick = { showMenu = false; onNavigateToSessions() }
-                        )
                         DropdownMenuItem(
                             text = { Text("Settings") },
                             onClick = { showMenu = false; onNavigateToSettings() }
