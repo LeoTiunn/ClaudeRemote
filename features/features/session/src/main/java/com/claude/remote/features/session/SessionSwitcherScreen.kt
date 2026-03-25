@@ -89,7 +89,7 @@ fun SessionSwitcherScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ConnectionStatusDot(state = uiState.connectionState)
                         Spacer(modifier = Modifier.size(8.dp))
-                        Text("Claude Remote")
+                        Text("New Session")
                     }
                 },
                 actions = {
@@ -177,7 +177,7 @@ fun SessionSwitcherScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search repos...") },
+                    label = { Text("Search repos to create session...") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
