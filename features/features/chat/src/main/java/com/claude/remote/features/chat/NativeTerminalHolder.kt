@@ -14,6 +14,9 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +43,10 @@ class NativeTerminalHolder @Inject constructor(
 
     var termSession: TerminalSession? = null
         private set
+
+    /** Incremented on every session change — Compose observes this to trigger recomposition */
+    private val _sessionGeneration = MutableStateFlow(0)
+    val sessionGeneration: StateFlow<Int> = _sessionGeneration.asStateFlow()
 
     var attachedSessionName: String = ""
 
@@ -210,8 +217,9 @@ class NativeTerminalHolder @Inject constructor(
                 Thread { handle.resizePty(newCols, newRows) }.start()
             }
             termSession = sshTermSession  // Now safe — callback is set
+            _sessionGeneration.value++
             terminalView?.attachSession(sshTermSession)
-            DebugLog.log("TERM", "SshTerminalSession attached")
+            DebugLog.log("TERM", "SshTerminalSession attached (gen=${_sessionGeneration.value})")
         }
 
         return sshTermSession
@@ -246,10 +254,9 @@ class NativeTerminalHolder @Inject constructor(
     fun destroySession() {
         termSession?.finishIfRunning()
         termSession = null
+        _sessionGeneration.value++
         attachedSessionName = ""
         channelHandle?.disconnect?.invoke()
         channelHandle = null
-        // Force a fresh view next time so old session content doesn't linger
-        terminalView = null
     }
 }

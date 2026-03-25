@@ -3,7 +3,8 @@ package com.claude.remote.features.chat
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -18,6 +19,8 @@ fun TerminalView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    // Observe session generation to trigger recomposition when session changes
+    val generation by holder.sessionGeneration.collectAsState()
 
     AndroidView(
         factory = { ctx ->
@@ -31,6 +34,8 @@ fun TerminalView(
             }
         },
         update = { tv ->
+            // generation is read here so Compose re-runs this block on session change
+            @Suppress("UNUSED_VARIABLE") val gen = generation
             val session = holder.termSession
             if (session != null && tv.currentSession != session) {
                 tv.attachSession(session)
