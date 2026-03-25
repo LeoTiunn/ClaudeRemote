@@ -28,14 +28,13 @@ class SessionSwitcherViewModel @Inject constructor(
     @Volatile private var loadingInProgress = false
 
     init {
-        // Load repo history from prefs
         _uiState.update { it.copy(repoHistory = settingsRepository.getRepoHistory()) }
 
         viewModelScope.launch {
             sshClient.connectionState.collect { state ->
                 val wasDisconnected = _uiState.value.connectionState != ConnectionState.CONNECTED
                 _uiState.update { it.copy(connectionState = state, isConnecting = false) }
-                if (state == ConnectionState.CONNECTED && wasDisconnected && !loadingInProgress) {
+                if (state == ConnectionState.CONNECTED && wasDisconnected) {
                     loadSessionsAndRepos()
                 }
             }
@@ -43,9 +42,7 @@ class SessionSwitcherViewModel @Inject constructor(
         autoConnect()
     }
 
-    /** Called when the Sessions screen becomes visible (e.g. returning from Chat) */
     fun onScreenVisible() {
-        // Re-sync connection state from actual SSH client (may have changed while on ChatScreen)
         val currentState = sshClient.connectionState.value
         _uiState.update { it.copy(
             repoHistory = settingsRepository.getRepoHistory(),
@@ -58,7 +55,6 @@ class SessionSwitcherViewModel @Inject constructor(
 
     private fun autoConnect() {
         if (sshClient.connectionState.value == ConnectionState.CONNECTED) {
-            // Already connected — load sessions immediately
             loadSessionsAndRepos()
             return
         }
@@ -102,14 +98,14 @@ class SessionSwitcherViewModel @Inject constructor(
         _uiState.update { it.copy(showPasswordPrompt = false) }
     }
 
-    private suspend fun ensureDetachedFromTmux() {
-        if (sshClient.isAttachedToTmux) {
-            sshClient.sendRawBytes(byteArrayOf(0x02)) // Ctrl+B (tmux prefix)
-            kotlinx.coroutines.delay(150)
-            sshClient.sendRawBytes("d".toByteArray()) // 'd' to detach
-            sshClient.isAttachedToTmux = false
-            // Wait for detach to complete — shell needs time to process
-            kotlinx.coroutines.delay(800)
+    /** Temporarily bypass isAttachedToTmux flag for command shell operations */
+    private inline fun <T> withCommandShell(block: () -> T): T {
+        val wasAttached = sshClient.isAttachedToTmux
+        sshClient.isAttachedToTmux = false
+        return try {
+            block()
+        } finally {
+            sshClient.isAttachedToTmux = wasAttached
         }
     }
 
@@ -119,8 +115,9 @@ class SessionSwitcherViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                ensureDetachedFromTmux()
-                val sessions = tmuxSessionManager.listSessions(sshClient)
+                val sessions = withCommandShell {
+                    tmuxSessionManager.listSessions(sshClient)
+                }
                 _uiState.update {
                     it.copy(sessions = sessions, isLoading = false, error = null)
                 }
@@ -144,10 +141,11 @@ class SessionSwitcherViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                ensureDetachedFromTmux()
-                val output = sshClient.executeCommand(
-                    "find ~/Developer -maxdepth 3 -type d -name .git 2>/dev/null | sed 's|/\\.git\$||' | sed 's|.*/Developer/||' | grep -i '${query.replace("'", "\\'")}' | sort | head -20"
-                )
+                val output = withCommandShell {
+                    sshClient.executeCommand(
+                        "find ~/Developer -maxdepth 3 -type d -name .git 2>/dev/null | sed 's|/\\.git\$||' | sed 's|.*/Developer/||' | grep -i '${query.replace("'", "\\'")}' | sort | head -20"
+                    )
+                }
                 val repos = output.lines().filter { it.isNotBlank() }
                 _uiState.update { it.copy(repos = repos, isSearching = true) }
             } catch (e: Exception) {
@@ -162,7 +160,6 @@ class SessionSwitcherViewModel @Inject constructor(
 
     fun attachSession(sessionName: String) {
         _uiState.update { it.copy(repos = emptyList(), isSearching = false) }
-        // Don't attach via JSch — ChatViewModel will start dbclient subprocess
         sshClient.currentSessionName = sessionName
         _uiState.update { it.copy(navigateToSession = sessionName) }
     }
@@ -178,10 +175,10 @@ class SessionSwitcherViewModel @Inject constructor(
         _uiState.update { it.copy(repos = emptyList(), isSearching = false, repoHistory = settingsRepository.getRepoHistory()) }
         viewModelScope.launch {
             try {
-                ensureDetachedFromTmux()
-                tmuxSessionManager.createSession(sessionName, workDir, sshClient)
+                withCommandShell {
+                    tmuxSessionManager.createSession(sessionName, workDir, sshClient)
+                }
                 kotlinx.coroutines.delay(500)
-                // Don't attach via JSch — ChatViewModel will start dbclient
                 sshClient.currentSessionName = sessionName
                 _uiState.update { it.copy(navigateToSession = sessionName) }
             } catch (e: Exception) {
@@ -193,7 +190,9 @@ class SessionSwitcherViewModel @Inject constructor(
     fun killSession(sessionName: String) {
         viewModelScope.launch {
             try {
-                tmuxSessionManager.killSession(sessionName, sshClient)
+                withCommandShell {
+                    tmuxSessionManager.killSession(sessionName, sshClient)
+                }
                 loadSessionsAndRepos()
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
