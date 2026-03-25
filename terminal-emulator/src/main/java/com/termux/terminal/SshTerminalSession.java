@@ -79,6 +79,11 @@ public class SshTerminalSession extends TerminalSession {
     return mSshDataReceiver;
   }
 
+  /** Set the resize callback (can be set after construction). */
+  public void setResizeCallback(ResizeCallback callback) {
+    mResizeCallback = callback;
+  }
+
   /** Get the InputStream to set on the JSch channel via channel.setInputStream(). */
   public InputStream getUserInputProvider() {
     return mUserInputProvider;
