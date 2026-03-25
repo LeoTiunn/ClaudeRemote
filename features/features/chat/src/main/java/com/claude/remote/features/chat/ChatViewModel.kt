@@ -162,27 +162,28 @@ class ChatViewModel @Inject constructor(
                 val sessionNames = sessions.map { it.name }
                 DebugLog.log("CHAT", "Refresh token: ${sessionNames.size} sessions to restart")
 
-                // 2. Refresh token (once)
-                sshClient.executeCommand("ca refresh")
-                DebugLog.log("CHAT", "Token refreshed")
-
-                // 3. Exit Claude CLI in all sessions
+                // 2. Exit Claude CLI in all sessions
                 for (name in sessionNames) {
                     val escaped = name.replace("'", "'\\''")
                     sshClient.executeCommand("tmux send-keys -t '$escaped' '/exit' Enter")
                 }
-                kotlinx.coroutines.delay(3000)
+                kotlinx.coroutines.delay(2000)
 
-                // 4. Restart Claude CLI in all sessions
-                for (name in sessionNames) {
+                // 3. Build chain: ca refresh && restart all sessions
+                // ca refresh may require Okta auth (interactive in terminal),
+                // so we send it to the current terminal and chain ccx restarts with &&
+                val restartChain = sessionNames.joinToString(" && ") { name ->
                     val escaped = name.replace("'", "'\\''")
-                    sshClient.executeCommand("tmux send-keys -t '$escaped' 'ccx' Enter")
+                    "tmux send-keys -t '$escaped' 'ccx' Enter"
                 }
-                DebugLog.log("CHAT", "All ${sessionNames.size} sessions restarted")
+                val fullCommand = "ca refresh && $restartChain"
+                DebugLog.log("CHAT", "Sending refresh chain to terminal: $fullCommand")
+
+                sshClient.isAttachedToTmux = wasAttached
+                terminalHolder.writeToSession(fullCommand + "\r")
             } catch (e: Exception) {
                 DebugLog.log("CHAT", "Refresh token failed: ${e.message}")
                 _uiState.update { it.copy(error = "Refresh token failed: ${e.message}") }
-            } finally {
                 sshClient.isAttachedToTmux = wasAttached
             }
         }
