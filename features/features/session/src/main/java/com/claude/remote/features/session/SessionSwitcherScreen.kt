@@ -18,11 +18,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -202,64 +200,6 @@ fun SessionSwitcherScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Active sessions section
-                    if (uiState.sessions.isNotEmpty()) {
-                        item {
-                            Text(
-                                "Active Sessions",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                        }
-                        items(uiState.sessions, key = { "session-${it.name}" }) { session ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.attachSession(session.name)
-                                    },
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Terminal,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.size(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = session.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                        Text(
-                                            text = session.windowName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.killSession(session.name) }) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Kill session",
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
-                    }
-
                     // Search results OR history section
                     if (uiState.isSearching && uiState.repos.isNotEmpty()) {
                         // Search results
@@ -309,7 +249,7 @@ fun SessionSwitcherScreen(
                         }
                     }
 
-                    if (uiState.sessions.isEmpty() && uiState.repoHistory.isEmpty() && !uiState.isLoading && searchQuery.isEmpty()) {
+                    if (uiState.repoHistory.isEmpty() && !uiState.isLoading && searchQuery.isEmpty()) {
                         item {
                             Column(
                                 modifier = Modifier
@@ -318,15 +258,11 @@ fun SessionSwitcherScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("No active sessions")
                                 Text(
-                                    "Search for a repo above to start a new session",
+                                    "Search for a repo to start a new session",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Button(onClick = { viewModel.loadSessionsAndRepos() }) {
-                                    Text("Refresh")
-                                }
                             }
                         }
                     }
