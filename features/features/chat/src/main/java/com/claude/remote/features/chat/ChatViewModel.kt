@@ -76,8 +76,14 @@ class ChatViewModel @Inject constructor(
                     sshClient.connect(sshClient.host, sshClient.port, sshClient.username, sshClient.password)
                 }
 
-                // Open new shell channel on existing SSH session
-                terminalHolder.createSshSession()
+                // Open new shell channel — retry once on failure (handles stale session)
+                try {
+                    terminalHolder.createSshSession()
+                } catch (e: Exception) {
+                    DebugLog.log("CHAT", "First createSshSession failed: ${e.message}, retrying with fresh connection")
+                    sshClient.connect(sshClient.host, sshClient.port, sshClient.username, sshClient.password)
+                    terminalHolder.createSshSession()
+                }
 
                 // Wait for shell prompt, then attach tmux
                 kotlinx.coroutines.delay(1000)

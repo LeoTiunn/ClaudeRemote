@@ -57,6 +57,8 @@ class SshClientImpl @Inject constructor() : SshClient {
     @Volatile override var isAttachedToTmux: Boolean = false
     @Volatile override var currentSessionName: String = ""
 
+    // Prevent concurrent connect() calls (e.g. attemptReconnect vs user-triggered)
+    private val connectMutex = Mutex()
     // For shell-based command execution
     private val execMutex = Mutex()
     @Volatile private var pendingCommand: PendingCommand? = null
@@ -76,7 +78,15 @@ class SshClientImpl @Inject constructor() : SshClient {
         username: String,
         password: String
     ) {
+        connectMutex.withLock {
         withContext(Dispatchers.IO) {
+            // Already connected and session alive? Skip.
+            if (_connectionState.value == ConnectionState.CONNECTED
+                && jschSession?.isConnected == true) {
+                DebugLog.log("SSH", "Already connected, skipping connect()")
+                return@withContext
+            }
+
             this@SshClientImpl.host = host
             this@SshClientImpl.port = port
             this@SshClientImpl.username = username
@@ -144,6 +154,7 @@ class SshClientImpl @Inject constructor() : SshClient {
                 throw e
             }
         }
+        } // connectMutex
     }
 
     private fun startShellReader(channel: ChannelShell, shellIn: java.io.InputStream, generation: Int) {
@@ -342,7 +353,12 @@ class SshClientImpl @Inject constructor() : SshClient {
 
     override suspend fun openShellChannel(cols: Int, rows: Int): ShellChannelHandle {
         return withContext(Dispatchers.IO) {
-            val session = jschSession ?: throw IllegalStateException("SSH not connected")
+            var session = jschSession
+            if (session == null || !session.isConnected) {
+                DebugLog.log("SSH", "JSch session dead, reconnecting before openShellChannel")
+                connect(host, port, username, password)
+                session = jschSession ?: throw IllegalStateException("SSH reconnect failed")
+            }
 
             DebugLog.log("SSH", "Opening terminal shell channel")
 
