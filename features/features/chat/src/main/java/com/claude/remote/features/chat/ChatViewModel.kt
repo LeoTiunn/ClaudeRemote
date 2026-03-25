@@ -152,6 +152,17 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun killSession(sessionName: String) {
+        viewModelScope.launch {
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
+            try {
+                sshClient.executeCommand("tmux kill-session -t '${sessionName.replace("'", "'\\''")}'")
+            } catch (_: Exception) {}
+            sshClient.isAttachedToTmux = wasAttached
+        }
+    }
+
     fun sendRawEscape(sequence: String) {
         terminalHolder.writeBytes(sequence.toByteArray(Charsets.UTF_8))
     }

@@ -45,9 +45,9 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -100,8 +100,8 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showMenu by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
+    var killConfirmSession by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -195,11 +195,27 @@ fun ChatScreen(
                                     val isCurrent = session.name == uiState.sessionName
                                     DropdownMenuItem(
                                         text = {
-                                            Text(
-                                                session.name,
-                                                color = if (isCurrent) MaterialTheme.colorScheme.primary
-                                                    else MaterialTheme.colorScheme.onSurface
-                                            )
+                                            Row(
+                                                modifier = Modifier.combinedClickable(
+                                                    onClick = {
+                                                        showSessionSheet = false
+                                                        viewModel.switchSession(session.name)
+                                                    },
+                                                    onLongClick = {
+                                                        if (!isCurrent) {
+                                                            showSessionSheet = false
+                                                            killConfirmSession = session.name
+                                                        }
+                                                    }
+                                                ),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    session.name,
+                                                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
                                         },
                                         leadingIcon = {
                                             Box(
@@ -272,35 +288,29 @@ fun ChatScreen(
                         }
                     }
 
-                    // Attach file button
-                    IconButton(
-                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                        enabled = !uiState.isUploading
-                    ) {
-                        Icon(
-                            Icons.Default.AttachFile,
-                            contentDescription = "Attach file",
-                            tint = if (uiState.isUploading)
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // Attach file button — only when connected
+                    if (uiState.connectionState == ConnectionState.CONNECTED) {
+                        IconButton(
+                            onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                            enabled = !uiState.isUploading
+                        ) {
+                            Icon(
+                                Icons.Default.AttachFile,
+                                contentDescription = "Attach file",
+                                tint = if (uiState.isUploading)
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
-                    IconButton(onClick = { showMenu = true }) {
+                    // Direct settings button
+                    IconButton(onClick = { onNavigateToSettings() }) {
                         Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "Menu",
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            onClick = { showMenu = false; onNavigateToSettings() }
                         )
                     }
                 }
@@ -465,6 +475,29 @@ fun ChatScreen(
         }
     }
 
+    // Kill session confirmation dialog
+    killConfirmSession?.let { sessionName ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { killConfirmSession = null },
+            title = { Text("Kill Session") },
+            text = { Text("Kill tmux session \"$sessionName\"?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        viewModel.killSession(sessionName)
+                        killConfirmSession = null
+                    }
+                ) {
+                    Text("Kill", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { killConfirmSession = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

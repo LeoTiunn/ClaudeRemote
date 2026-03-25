@@ -40,7 +40,10 @@ fun AppNavigation(navController: NavHostController) {
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToDebugLog = { navController.navigate(Routes.DEBUG_LOG) { launchSingleTop = true } }
+            )
         }
         composable(Routes.DEBUG_LOG) {
             DebugLogScreen(onBack = { navController.popBackStack() })

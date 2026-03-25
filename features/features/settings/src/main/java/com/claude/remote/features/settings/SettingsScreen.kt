@@ -50,6 +50,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit = {},
+    onNavigateToDebugLog: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -250,6 +251,21 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Developer",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            OutlinedButton(
+                onClick = onNavigateToDebugLog,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Debug Log")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
