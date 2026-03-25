@@ -86,7 +86,7 @@ class ChatViewModel @Inject constructor(
                 }
 
                 // Wait for shell prompt, then attach tmux
-                kotlinx.coroutines.delay(1000)
+                kotlinx.coroutines.delay(300)
                 if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
                     DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
                     terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
