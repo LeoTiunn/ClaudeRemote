@@ -151,7 +151,8 @@ class NativeTerminalHolder @Inject constructor(
         // Step 3: Set resize callback + attach view on Main
         withContext(Dispatchers.Main) {
             sshTermSession.setResizeCallback { newCols, newRows ->
-                handle.resizePty(newCols, newRows)
+                // Must NOT call setPtySize on Main thread — deadlocks with JSch session lock
+                Thread { handle.resizePty(newCols, newRows) }.start()
             }
             terminalView?.attachSession(sshTermSession)
             DebugLog.log("TERM", "SshTerminalSession attached")
