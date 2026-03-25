@@ -152,6 +152,26 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun refreshToken() {
+        viewModelScope.launch {
+            try {
+                // 1. Exit Claude CLI
+                terminalHolder.writeToSession("/exit\r")
+                kotlinx.coroutines.delay(1500)
+
+                // 2. Refresh token
+                terminalHolder.writeToSession("ca refresh\r")
+                kotlinx.coroutines.delay(5000)
+
+                // 3. Restart Claude CLI with --continue
+                terminalHolder.writeToSession("ccx\r")
+            } catch (e: Exception) {
+                DebugLog.log("CHAT", "Refresh token failed: ${e.message}")
+                _uiState.update { it.copy(error = "Refresh token failed: ${e.message}") }
+            }
+        }
+    }
+
     fun killSession(sessionName: String) {
         viewModelScope.launch {
             val wasAttached = sshClient.isAttachedToTmux
