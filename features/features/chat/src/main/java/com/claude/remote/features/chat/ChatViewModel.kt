@@ -142,21 +142,28 @@ class ChatViewModel @Inject constructor(
 
     fun switchSession(sessionName: String) {
         if (sessionName == _uiState.value.sessionName) return
-        if (terminalHolder.isSessionRunning()) {
-            // Update UI immediately — tmux switch is instant
-            terminalHolder.attachedSessionName = sessionName
-            sshClient.currentSessionName = sessionName
-            _uiState.update { it.copy(sessionName = sessionName) }
-            // Fast path: use command shell to tell tmux to switch the terminal client
+        // Update UI immediately
+        terminalHolder.attachedSessionName = sessionName
+        sshClient.currentSessionName = sessionName
+        _uiState.update { it.copy(sessionName = sessionName) }
+
+        val sshAlive = sshClient.connectionState.value == com.claude.remote.core.ui.components.ConnectionState.CONNECTED
+        if (sshAlive && terminalHolder.isSessionRunning()) {
+            // Fast path: SSH alive, just switch tmux client
             viewModelScope.launch {
                 val wasAttached = sshClient.isAttachedToTmux
                 sshClient.isAttachedToTmux = false
                 try {
                     sshClient.executeCommand("tmux switch-client -t '${sessionName.replace("'", "'\\''")}'")
-                } catch (_: Exception) {}
-                sshClient.isAttachedToTmux = wasAttached
+                    sshClient.isAttachedToTmux = wasAttached
+                } catch (_: Exception) {
+                    // Command failed — SSH likely dead, full reconnect
+                    sshClient.isAttachedToTmux = wasAttached
+                    connectAndAttach(sessionName)
+                }
             }
         } else {
+            // SSH dead or terminal dead — full reconnect
             connectAndAttach(sessionName)
         }
     }
