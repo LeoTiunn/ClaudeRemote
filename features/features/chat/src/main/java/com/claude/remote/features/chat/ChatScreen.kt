@@ -117,7 +117,7 @@ fun ChatScreen(
         viewModel.initVoiceInput(context)
     }
 
-    // On resume: check SSH is alive, reconnect if dead
+    // On resume: probe SSH connection, reconnect if dead
     LaunchedEffect(lifecycleOwner) {
         var firstResume = true
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -125,19 +125,8 @@ fun ChatScreen(
                 firstResume = false
                 return@repeatOnLifecycle
             }
-            if (uiState.sessionName.isEmpty()) return@repeatOnLifecycle
-
-            val sshAlive = uiState.connectionState == com.claude.remote.core.ui.components.ConnectionState.CONNECTED
-            val terminalRunning = viewModel.terminalHolder.isSessionRunning()
-
-            if (sshAlive && terminalRunning) {
-                // SSH + terminal both alive — just redraw
-                viewModel.terminalHolder.terminalView?.invalidate()
-                viewModel.sendRawEscape("\u000c") // Ctrl+L redraw
-            } else {
-                // SSH died or terminal dead — reconnect
-                viewModel.reconnect()
-            }
+            // Probe SSH with actual command — don't trust cached connectionState
+            viewModel.checkConnectionAndReconnect()
         }
     }
 

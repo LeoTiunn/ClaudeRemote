@@ -121,6 +121,29 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /** Probe SSH with a quick command. If dead, reconnect. Called on resume. */
+    fun checkConnectionAndReconnect() {
+        val sessionName = _uiState.value.sessionName
+        if (sessionName.isEmpty()) return
+
+        viewModelScope.launch {
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
+            try {
+                // Quick probe — if SSH is dead this will throw
+                sshClient.executeCommand("echo ok")
+                sshClient.isAttachedToTmux = wasAttached
+                // SSH alive — just redraw terminal
+                terminalHolder.terminalView?.invalidate()
+                terminalHolder.writeToSession("\u000c") // Ctrl+L
+            } catch (_: Exception) {
+                sshClient.isAttachedToTmux = wasAttached
+                DebugLog.log("CHAT", "SSH probe failed on resume, reconnecting")
+                connectAndAttach(sessionName)
+            }
+        }
+    }
+
     fun loadAvailableSessions() {
         _uiState.update { it.copy(isLoadingSessions = true) }
         viewModelScope.launch {
