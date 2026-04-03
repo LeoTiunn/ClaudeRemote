@@ -165,7 +165,8 @@ class ChatViewModel @Inject constructor(
 
     fun switchSession(sessionName: String) {
         if (sessionName == _uiState.value.sessionName) return
-        // Update UI immediately
+        // Clear old content + update UI immediately so user sees the switch
+        terminalHolder.clearScreen()
         terminalHolder.attachedSessionName = sessionName
         sshClient.currentSessionName = sessionName
         _uiState.update { it.copy(sessionName = sessionName) }

@@ -233,6 +233,12 @@ class NativeTerminalHolder @Inject constructor(
 
     fun isSessionRunning(): Boolean = termSession?.isRunning == true
 
+    /** Clear terminal screen immediately — used during session switch */
+    fun clearScreen() {
+        termSession?.emulator?.reset()
+        terminalView?.invalidate()
+    }
+
     fun detachFromParent() {
         (terminalView?.parent as? ViewGroup)?.removeView(terminalView)
     }
