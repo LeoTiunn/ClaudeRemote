@@ -121,24 +121,29 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    /** Probe SSH with a quick command. If dead, reconnect. Called on resume. */
+    /** Probe SSH with a quick command + timeout. If dead or hung, reconnect. Called on resume. */
     fun checkConnectionAndReconnect() {
         val sessionName = _uiState.value.sessionName
         if (sessionName.isEmpty()) return
+
+        _uiState.update { it.copy(statusMessage = "Checking connection...") }
 
         viewModelScope.launch {
             val wasAttached = sshClient.isAttachedToTmux
             sshClient.isAttachedToTmux = false
             try {
-                // Quick probe — if SSH is dead this will throw
-                sshClient.executeCommand("echo ok")
+                // Probe with 5s timeout — half-dead SSH may hang instead of throwing
+                kotlinx.coroutines.withTimeout(5000) {
+                    sshClient.executeCommand("echo ok")
+                }
                 sshClient.isAttachedToTmux = wasAttached
+                _uiState.update { it.copy(statusMessage = null) }
                 // SSH alive — just redraw terminal
                 terminalHolder.terminalView?.invalidate()
                 terminalHolder.writeToSession("\u000c") // Ctrl+L
             } catch (_: Exception) {
                 sshClient.isAttachedToTmux = wasAttached
-                DebugLog.log("CHAT", "SSH probe failed on resume, reconnecting")
+                DebugLog.log("CHAT", "SSH probe failed/timed out on resume, reconnecting")
                 connectAndAttach(sessionName)
             }
         }
