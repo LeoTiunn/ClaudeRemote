@@ -132,8 +132,8 @@ class ChatViewModel @Inject constructor(
             val wasAttached = sshClient.isAttachedToTmux
             sshClient.isAttachedToTmux = false
             try {
-                // Probe with 5s timeout — half-dead SSH may hang instead of throwing
-                kotlinx.coroutines.withTimeout(5000) {
+                // Probe with 2s timeout — half-dead SSH may hang instead of throwing
+                kotlinx.coroutines.withTimeout(2000) {
                     sshClient.executeCommand("echo ok")
                 }
                 sshClient.isAttachedToTmux = wasAttached
