@@ -197,26 +197,64 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun refreshToken() {
+    fun restartCli(allSessions: Boolean) {
         viewModelScope.launch {
+            if (!allSessions) {
+                // This session only — send /exit then ccx to current terminal
+                terminalHolder.writeToSession("/exit\r")
+                kotlinx.coroutines.delay(2000)
+                terminalHolder.writeToSession("ccx\r")
+                return@launch
+            }
+            // All sessions
             val wasAttached = sshClient.isAttachedToTmux
             sshClient.isAttachedToTmux = false
             try {
-                // 1. Get all active sessions
+                val sessions = tmuxSessionManager.listSessions(sshClient)
+                val sessionNames = sessions.map { it.name }
+                DebugLog.log("CHAT", "Restart CLI: ${sessionNames.size} sessions")
+
+                for (name in sessionNames) {
+                    val escaped = name.replace("'", "'\\''")
+                    sshClient.executeCommand("tmux send-keys -t '$escaped' '/exit' Enter")
+                }
+                kotlinx.coroutines.delay(2000)
+                for (name in sessionNames) {
+                    val escaped = name.replace("'", "'\\''")
+                    sshClient.executeCommand("tmux send-keys -t '$escaped' 'ccx' Enter")
+                }
+                sshClient.isAttachedToTmux = wasAttached
+            } catch (e: Exception) {
+                DebugLog.log("CHAT", "Restart CLI failed: ${e.message}")
+                _uiState.update { it.copy(error = "Restart CLI failed: ${e.message}") }
+                sshClient.isAttachedToTmux = wasAttached
+            }
+        }
+    }
+
+    fun refreshToken(allSessions: Boolean) {
+        viewModelScope.launch {
+            if (!allSessions) {
+                // This session only — /exit then ca refresh && ccx in current terminal
+                terminalHolder.writeToSession("/exit\r")
+                kotlinx.coroutines.delay(2000)
+                terminalHolder.writeToSession("ca refresh && ccx\r")
+                return@launch
+            }
+            // All sessions
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
+            try {
                 val sessions = tmuxSessionManager.listSessions(sshClient)
                 val sessionNames = sessions.map { it.name }
                 DebugLog.log("CHAT", "Refresh token: ${sessionNames.size} sessions to restart")
 
-                // 2. Exit Claude CLI in all sessions
                 for (name in sessionNames) {
                     val escaped = name.replace("'", "'\\''")
                     sshClient.executeCommand("tmux send-keys -t '$escaped' '/exit' Enter")
                 }
                 kotlinx.coroutines.delay(2000)
 
-                // 3. Build chain: ca refresh && restart all sessions
-                // ca refresh may require Okta auth (interactive in terminal),
-                // so we send it to the current terminal and chain ccx restarts with &&
                 val restartChain = sessionNames.joinToString(" && ") { name ->
                     val escaped = name.replace("'", "'\\''")
                     "tmux send-keys -t '$escaped' 'ccx' Enter"

@@ -102,7 +102,8 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showSessionSheet by remember { mutableStateOf(false) }
     var killConfirmSession by remember { mutableStateOf<String?>(null) }
-    var showRefreshTokenConfirm by remember { mutableStateOf(false) }
+    var showRestartCliDialog by remember { mutableStateOf(false) }
+    var showRefreshTokenDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -269,13 +270,25 @@ fun ChatScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
+                                            "Restart CLI",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    onClick = {
+                                        showSessionSheet = false
+                                        showRestartCliDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
                                             "Refresh Token",
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     },
                                     onClick = {
                                         showSessionSheet = false
-                                        showRefreshTokenConfirm = true
+                                        showRefreshTokenDialog = true
                                     }
                                 )
                             }
@@ -519,25 +532,59 @@ fun ChatScreen(
         }
     }
 
-    // Refresh Token confirmation dialog
-    if (showRefreshTokenConfirm) {
+    // Restart CLI dialog — this session or all
+    if (showRestartCliDialog) {
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showRefreshTokenConfirm = false },
-            title = { Text("Refresh Token") },
-            text = { Text("This will refresh the API token and restart Claude CLI in ALL active sessions.") },
+            onDismissRequest = { showRestartCliDialog = false },
+            title = { Text("Restart CLI") },
+            text = { Text("Exit Claude CLI and restart with --continue.") },
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = {
-                        showRefreshTokenConfirm = false
-                        viewModel.refreshToken()
+                        showRestartCliDialog = false
+                        viewModel.restartCli(allSessions = true)
                     }
                 ) {
-                    Text("Refresh")
+                    Text("All Sessions")
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showRefreshTokenConfirm = false }) {
-                    Text("Cancel")
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showRestartCliDialog = false
+                        viewModel.restartCli(allSessions = false)
+                    }
+                ) {
+                    Text("This Session")
+                }
+            }
+        )
+    }
+
+    // Refresh Token dialog — this session or all
+    if (showRefreshTokenDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showRefreshTokenDialog = false },
+            title = { Text("Refresh Token") },
+            text = { Text("Refresh API token, then restart Claude CLI.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showRefreshTokenDialog = false
+                        viewModel.refreshToken(allSessions = true)
+                    }
+                ) {
+                    Text("All Sessions")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showRefreshTokenDialog = false
+                        viewModel.refreshToken(allSessions = false)
+                    }
+                ) {
+                    Text("This Session")
                 }
             }
         )
