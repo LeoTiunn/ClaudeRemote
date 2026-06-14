@@ -111,21 +111,18 @@ final class ChatViewModel: ObservableObject {
         if !sessionName.isEmpty { connectAndAttach(sessionName) }
     }
 
-    /// On resume: probe SSH with a 2s timeout; reconnect if dead/hung (Android parity).
+    /// On resume (app came back to foreground): the terminal PTY channel is usually dead
+    /// after the screen was off for a while, even if the command channel still answers —
+    /// they're separate channels, so probing with `echo ok` gives a false "alive". Probe
+    /// the PTY itself: send Ctrl+L and check we get a redraw; if nothing comes back
+    /// quickly, re-attach a fresh PTY (the reliable path).
     func checkConnectionAndReconnect() {
         guard !sessionName.isEmpty else { return }
-        statusMessage = "Checking connection..."
         Task {
-            let wasAttached = ssh.isAttachedToTmux
-            ssh.isAttachedToTmux = false
-            let ok = await withTimeoutBool(seconds: 2) {
-                _ = try await self.ssh.executeCommand("echo ok")
-            }
-            ssh.isAttachedToTmux = wasAttached
-            if ok {
-                statusMessage = nil
-                holder.writeBytes([0x0c]) // Ctrl+L redraw
-            } else {
+            // Probe the actual PTY: did we receive any bytes shortly after a redraw nudge?
+            let gotOutput = await holder.probeRedraw(timeout: 2.0)
+            if !gotOutput {
+                // PTY is stale → re-attach fresh (same path as session switch).
                 connectAndAttach(sessionName)
             }
         }

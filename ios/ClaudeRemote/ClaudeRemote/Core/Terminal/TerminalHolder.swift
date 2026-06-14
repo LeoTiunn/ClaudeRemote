@@ -68,10 +68,28 @@ final class TerminalHolder: ObservableObject {
         // Pump SSH output into SwiftTerm on the main actor.
         pumpTask = Task { @MainActor in
             for await chunk in h.output {
+                outputTick &+= 1
                 tv.feed(byteArray: chunk[...])
             }
         }
         generation += 1
+    }
+
+    /// Bumped whenever PTY output arrives — used to detect a live vs stale channel.
+    private var outputTick: UInt64 = 0
+
+    /// Send a redraw nudge (Ctrl+L) and report whether the PTY produced any output within
+    /// `timeout`. A stale PTY (after long backgrounding) won't respond → caller re-attaches.
+    func probeRedraw(timeout: TimeInterval) async -> Bool {
+        guard handle != nil else { return false }
+        let before = outputTick
+        writeBytes([0x0c]) // Ctrl+L — ask the foreground app / tmux to repaint
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if outputTick != before { return true }
+            try? await Task.sleep(for: .milliseconds(80))
+        }
+        return false
     }
 
     func writeToSession(_ text: String) {
