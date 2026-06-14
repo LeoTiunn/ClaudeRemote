@@ -244,8 +244,8 @@ struct ChatView: View {
         }
         .padding(.horizontal, 4)
         .padding(.top, 6)
-        // Just enough bottom pad to clear the home-indicator line, no wasted space.
-        .padding(.bottom, inputFocused ? 6 : 10)
+        // Clear the home-indicator gesture area so the field doesn't need a double-tap.
+        .padding(.bottom, inputFocused ? 6 : 24)
         .background(colors.surfaceVariant)
     }
 

@@ -28,7 +28,9 @@ final class TerminalHolder: ObservableObject {
     /// Lazily create the SwiftTerm view on first use (kept off app launch).
     var terminalView: TerminalView {
         if let v = _terminalView { return v }
-        let tv = TerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        // NoAccessoryTerminalView permanently suppresses SwiftTerm's built-in keyboard
+        // accessory bar (we have our own TerminalKeysBar).
+        let tv = NoAccessoryTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
         tv.terminalDelegate = coordinator
         tv.nativeBackgroundColor = UIColor(red: 0x1C/255, green: 0x19/255, blue: 0x17/255, alpha: 1)
         tv.nativeForegroundColor = UIColor(red: 0xEA/255, green: 0xE1/255, blue: 0xD9/255, alpha: 1)
