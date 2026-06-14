@@ -38,3 +38,11 @@ Thumbs.db
 
 # CMake build cache
 terminal-emulator/.cxx/
+
+# iOS / Xcode
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/DerivedData/
+ios/**/.swiftpm/
+ios/**/*.xcscmblueprint
+ios/**/*.xccheckout
