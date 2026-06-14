@@ -23,6 +23,27 @@ final class ChatViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.connectionState = $0 }
             .store(in: &cancellables)
+
+        // Swipe on the terminal → tmux copy-mode scroll (no local scrollback in alt buffer).
+        holder.onScrollLines = { [weak self] lines in
+            self?.scrollHistory(lines: lines)
+        }
+    }
+
+    /// Scroll exactly like the Android app: with tmux mouse mode on, a finger swipe sends
+    /// MOUSE WHEEL events (not arrow keys — those get eaten by the CLI's input as command
+    /// history). tmux interprets wheel-up/down as scrollback movement. SGR (1006) format:
+    ///   ESC [ < button ; col ; row M   (button 64 = wheel up, 65 = wheel down)
+    /// Positive lines = scroll up (into history), negative = down.
+    func scrollHistory(lines: Int) {
+        guard lines != 0 else { return }
+        let up = lines > 0
+        let count = min(abs(lines), 8)
+        let button = up ? 64 : 65
+        // Report the wheel at a fixed cell near the top-middle of the screen.
+        let seq = "\u{1b}[<\(button);40;5M"
+        let bytes = Array(seq.utf8)
+        for _ in 0..<count { holder.writeBytes(bytes) }
     }
 
     /// Begin: connect SSH (if needed), open terminal channel, attach tmux session.
@@ -70,6 +91,11 @@ final class ChatViewModel: ObservableObject {
                 holder.writeToSession("tmux attach -t '\(esc)' || tmux new-session -s '\(esc)'\r")
                 holder.attachedSessionName = sessionName
                 ssh.currentSessionName = sessionName
+                // Our swipe sends mouse-wheel events; tmux needs mouse mode ON to capture
+                // them, and alternate-scroll ON so the wheel scrolls history while a
+                // full-screen app (Claude CLI) owns the alt screen. Same as Android.
+                try? await Task.sleep(for: .milliseconds(400))
+                _ = try? await ssh.executeCommand("tmux set -g mouse on \\; set -g alternate-scroll on")
                 ssh.isAttachedToTmux = true
                 isReconnecting = false
                 statusMessage = nil
@@ -120,28 +146,10 @@ final class ChatViewModel: ObservableObject {
 
     func switchSession(_ name: String) {
         guard name != sessionName else { return }
-        holder.clearScreen()
-        holder.attachedSessionName = name
-        ssh.currentSessionName = name
-        sessionName = name
-
-        let alive = ssh.connectionState == .connected
-        if alive && holder.isSessionRunning {
-            Task {
-                let wasAttached = ssh.isAttachedToTmux
-                ssh.isAttachedToTmux = false
-                do {
-                    let esc = name.replacingOccurrences(of: "'", with: "'\\''")
-                    _ = try await ssh.executeCommand("tmux switch-client -t '\(esc)'")
-                    ssh.isAttachedToTmux = wasAttached
-                } catch {
-                    ssh.isAttachedToTmux = wasAttached
-                    connectAndAttach(name)
-                }
-            }
-        } else {
-            connectAndAttach(name)
-        }
+        // Re-open a fresh PTY attached to the new session. switch-client over a separate
+        // command channel doesn't reliably retarget our attached client and left input
+        // frozen — re-attaching is a touch slower but always works and keeps input live.
+        connectAndAttach(name)
     }
 
     func restartCli(allSessions: Bool) {

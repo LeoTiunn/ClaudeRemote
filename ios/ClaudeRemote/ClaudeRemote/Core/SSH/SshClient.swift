@@ -130,6 +130,10 @@ final class SshClient: ObservableObject {
 
         let (stream, continuation) = AsyncStream<[UInt8]>.makeStream()
         let writerBox = WriterBox()
+        // Marks an intentional teardown (session switch / reconnect) so the PTY task's
+        // completion does NOT flip us to .disconnected and kick attemptReconnect — that
+        // race was freezing input after a session switch.
+        let intentionalClose = IntentionalClose()
 
         let task = Task.detached {
             do {
@@ -149,6 +153,7 @@ final class SshClient: ObservableObject {
                 // EOF/closed — terminal stream ends; resume handling lives in the VM.
             }
             continuation.finish()
+            if await intentionalClose.value { return } // closed on purpose — don't reconnect
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if self.connectionState == .connected {
@@ -174,6 +179,7 @@ final class SshClient: ObservableObject {
                 Task { await writerBox.resize(cols: c2, rows: r2) }
             },
             close: {
+                Task { await intentionalClose.markClosed() }
                 task.cancel()
                 Task { await writerBox.clear() }
             }
@@ -181,6 +187,12 @@ final class SshClient: ObservableObject {
     }
 
     enum SshError: Error { case notConnected, noCredentials }
+}
+
+/// Flags an intentional PTY teardown so the task's completion skips auto-reconnect.
+private actor IntentionalClose {
+    private(set) var value = false
+    func markClosed() { value = true }
 }
 
 /// Serializes access to the closure-scoped TTYStdinWriter across actors.

@@ -22,19 +22,23 @@ struct TerminalKeysBar: View {
     var body: some View {
         HStack(spacing: 3) {
             ForEach(keys, id: \.0) { label, seq in
-                Button { onKey(seq) } label: {
-                    Text(label)
-                        .font(.custom(AppFont.mono, size: 11))
-                        .foregroundStyle(colors.onSurfaceVariant)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 2).padding(.vertical, 6)
-                        .background(colors.surfaceVariant)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
+                key(label) { onKey(seq) }
             }
         }
         .padding(.horizontal, 4).padding(.vertical, 3)
+    }
+
+    private func key(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.custom(AppFont.mono, size: 11))
+                .foregroundStyle(colors.onSurfaceVariant)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 2).padding(.vertical, 6)
+                .background(colors.surfaceVariant)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
     }
 }

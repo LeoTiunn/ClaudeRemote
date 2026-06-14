@@ -25,16 +25,21 @@ final class TerminalHolder: ObservableObject {
 
     private init() {}
 
+    /// Scrollback in tmux only exists in tmux (alt buffer has no local scrollback), so a
+    /// swipe drives tmux copy-mode via the command channel. Set by createSession.
+    var onScrollLines: ((Int) -> Void)?
+
     /// Lazily create the SwiftTerm view on first use (kept off app launch).
     var terminalView: TerminalView {
         if let v = _terminalView { return v }
-        // NoAccessoryTerminalView permanently suppresses SwiftTerm's built-in keyboard
-        // accessory bar (we have our own TerminalKeysBar).
         let tv = NoAccessoryTerminalView(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
         tv.terminalDelegate = coordinator
         tv.nativeBackgroundColor = UIColor(red: 0x1C/255, green: 0x19/255, blue: 0x17/255, alpha: 1)
         tv.nativeForegroundColor = UIColor(red: 0xEA/255, green: 0xE1/255, blue: 0xD9/255, alpha: 1)
         tv.font = AppFont.monoUI(fontSize)
+        // Stay inert to swipes (no mouse bytes to remote); our own pan drives tmux copy-mode.
+        tv.installScrollGesture()
+        tv.onScrollLines = { [weak self] lines in self?.onScrollLines?(lines) }
         _terminalView = tv
         return tv
     }
@@ -79,8 +84,11 @@ final class TerminalHolder: ObservableObject {
     }
 
     func clearScreen() {
-        // ESC c — full reset; SwiftTerm redraws clean for session switches.
-        writeBytes([0x1b, 0x63])
+        // Clear the LOCAL SwiftTerm display only (do NOT send ESC c to the remote PTY —
+        // that hard-resets the remote terminal and breaks input after a session switch).
+        // tmux redraws the new session itself; we just blank the local view meanwhile.
+        _terminalView?.getTerminal().resetToInitialState()
+        _terminalView?.setNeedsDisplay(_terminalView?.bounds ?? .zero)
     }
 
     var isSessionRunning: Bool { handle != nil }
