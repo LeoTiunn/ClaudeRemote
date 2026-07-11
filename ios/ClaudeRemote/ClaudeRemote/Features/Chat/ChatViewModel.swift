@@ -219,24 +219,28 @@ final class ChatViewModel: ObservableObject {
     }
 
     func uploadAndAttachFile(_ url: URL) {
-        // File upload (Ctrl+B d -> base64 chunks -> reattach). Implemented in FileUploadManager.
+        // Upload over the command channel (independent of the tmux PTY — no detach needed).
+        // The command channel is gated by isAttachedToTmux, so bypass it during the upload,
+        // then paste the resulting remote path into the terminal for the CLI to read.
         Task {
             isUploading = true
+            statusMessage = "Uploading file..."
+            let wasAttached = ssh.isAttachedToTmux
+            ssh.isAttachedToTmux = false
             do {
-                holder.writeBytes([0x02]) // Ctrl+B
-                try? await Task.sleep(for: .milliseconds(150))
-                holder.writeBytes(Array("d".utf8))
-                try? await Task.sleep(for: .milliseconds(800))
-                let remotePath = try await FileUploadManager.upload(url: url, ssh: ssh)
-                isUploading = false
-                if !sessionName.isEmpty {
-                    let esc = sessionName.replacingOccurrences(of: "'", with: "'\\''")
-                    holder.writeToSession("tmux attach -t '\(esc)'\r")
-                    try? await Task.sleep(for: .milliseconds(500))
-                    holder.writeBytes(Array(remotePath.utf8))
+                let remotePath = try await FileUploadManager.upload(url: url, ssh: ssh) { [weak self] p in
+                    self?.statusMessage = "Uploading file… \(Int(p * 100))%"
                 }
-            } catch {
+                ssh.isAttachedToTmux = wasAttached
                 isUploading = false
+                statusMessage = nil
+                // Type the path into the terminal (a trailing space, no newline, so the
+                // user can keep typing their prompt around the attached file path).
+                holder.writeBytes(Array((remotePath + " ").utf8))
+            } catch {
+                ssh.isAttachedToTmux = wasAttached
+                isUploading = false
+                statusMessage = nil
                 self.error = "Upload failed: \(error.localizedDescription)"
             }
         }

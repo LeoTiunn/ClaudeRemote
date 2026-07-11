@@ -14,6 +14,7 @@ struct ChatView: View {
     let onNavigateToSettings: () -> Void
 
     @State private var showSessionMenu = false
+    @State private var expandedProjects: Set<String> = []
     @State private var killConfirm: String?
     @State private var showRestartDialog = false
     @State private var showRefreshDialog = false
@@ -21,6 +22,16 @@ struct ChatView: View {
     @State private var showFileImporter = false
     @State private var didStart = false
     @FocusState private var inputFocused: Bool
+
+    /// Title for the current session: prefer the Claude Code conversation name
+    /// (source of truth) for the attached tmux session, fall back to tmux name.
+    private var currentDisplayName: String {
+        if vm.sessionName.isEmpty { return "Claude Remote" }
+        if let s = vm.availableSessions.first(where: { $0.name == vm.sessionName }) {
+            return s.displayName
+        }
+        return vm.sessionName
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -81,7 +92,7 @@ struct ChatView: View {
             } label: {
                 HStack(spacing: 8) {
                     ConnectionStatusDot(state: vm.connectionState)
-                    Text(vm.sessionName.isEmpty ? "Claude Remote" : vm.sessionName)
+                    Text(currentDisplayName)
                         .font(.headline)
                         .foregroundStyle(colors.onBackground)
                         .lineLimit(1)
@@ -138,27 +149,50 @@ struct ChatView: View {
                             .font(.caption2).fontWeight(.semibold)
                             .foregroundStyle(colors.onSurfaceVariant.opacity(0.6))
                             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 6)
-                        ForEach(vm.availableSessions) { s in
-                            let isCurrent = s.name == vm.sessionName
+                        ForEach(vm.availableSessions.groupedByProject()) { project in
+                            let isCollapsed = !expandedProjects.contains(project.cwd)
                             Button {
-                                showSessionMenu = false
-                                vm.switchSession(s.name)
+                                if isCollapsed { expandedProjects.insert(project.cwd) }
+                                else { expandedProjects.remove(project.cwd) }
                             } label: {
-                                HStack(spacing: 12) {
-                                    Circle()
-                                        .fill(isCurrent ? colors.primary : colors.outline.opacity(0.5))
-                                        .frame(width: 7, height: 7)
-                                    Text(s.name)
-                                        .foregroundStyle(isCurrent ? colors.primary : colors.onSurface)
-                                        .lineLimit(1)
+                                HStack(spacing: 8) {
+                                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(colors.onSurfaceVariant).frame(width: 11)
+                                    Image(systemName: "folder.fill").font(.system(size: 12))
+                                        .foregroundStyle(colors.primary.opacity(0.8))
+                                    Text(project.name).font(.footnote).fontWeight(.semibold)
+                                        .foregroundStyle(colors.onSurface).lineLimit(1)
                                     Spacer(minLength: 8)
-                                    if isCurrent { Image(systemName: "checkmark").font(.system(size: 13)).foregroundStyle(colors.primary) }
-                                }.padding(.horizontal, 18).padding(.vertical, 13)
+                                    Text("\(project.sessions.count)").font(.caption2)
+                                        .foregroundStyle(colors.onSurfaceVariant)
+                                }.padding(.horizontal, 16).padding(.vertical, 9)
+                            }.buttonStyle(.plain)
+                            if !isCollapsed {
+                                ForEach(project.sessions) { s in
+                                    let isCurrent = s.name == vm.sessionName
+                                    Button {
+                                        showSessionMenu = false
+                                        vm.switchSession(s.name)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Circle()
+                                                .fill(s.status == "busy" ? colors.primary
+                                                      : (isCurrent ? colors.primary : colors.outline.opacity(0.5)))
+                                                .frame(width: 7, height: 7)
+                                            Text(s.displayName)
+                                                .foregroundStyle(isCurrent ? colors.primary : colors.onSurface)
+                                                .lineLimit(1)
+                                            Spacer(minLength: 8)
+                                            if isCurrent { Image(systemName: "checkmark").font(.system(size: 13)).foregroundStyle(colors.primary) }
+                                        }.padding(.leading, 34).padding(.trailing, 18).padding(.vertical, 12)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .simultaneousGesture(LongPressGesture().onEnded { _ in
+                                        if !isCurrent { showSessionMenu = false; killConfirm = s.name }
+                                    })
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .simultaneousGesture(LongPressGesture().onEnded { _ in
-                                if !isCurrent { showSessionMenu = false; killConfirm = s.name }
-                            })
                         }
                         Divider().padding(.vertical, 6)
                         menuItem("+ New Session", color: colors.primary) {

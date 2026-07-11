@@ -10,6 +10,8 @@ final class SessionSwitcherViewModel: ObservableObject {
     @Published var connectionState: ConnectionState = .disconnected
     @Published var isConnecting = false
     @Published var sessions: [TmuxSession] = []
+    /// Live sessions grouped by project (cwd), mirroring the webmux sidebar.
+    var projects: [TmuxProject] { sessions.groupedByProject() }
     @Published var repos: [String] = []
     @Published var repoHistory: [String] = []
     @Published var isSearching = false

@@ -12,6 +12,8 @@ struct SessionSwitcherView: View {
 
     @State private var searchQuery = ""
     @State private var passwordInput = ""
+    /// Projects the user has expanded (by cwd). Default: everything collapsed.
+    @State private var expanded: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -100,10 +102,17 @@ struct SessionSwitcherView: View {
         List {
             if !vm.isSearching && !vm.sessions.isEmpty {
                 Section {
-                    ForEach(vm.sessions) { session in
-                        sessionCard(session)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    ForEach(vm.projects) { project in
+                        projectHeader(project)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 2, trailing: 16))
                             .listRowBackground(Color.clear)
+                        if expanded.contains(project.cwd) {
+                            ForEach(project.sessions) { session in
+                                sessionCard(session)
+                                    .listRowInsets(EdgeInsets(top: 2, leading: 32, bottom: 2, trailing: 16))
+                                    .listRowBackground(Color.clear)
+                            }
+                        }
                     }
                 } header: {
                     Text("Active Sessions").foregroundStyle(colors.primary)
@@ -135,15 +144,49 @@ struct SessionSwitcherView: View {
         .scrollContentBackground(.hidden)
     }
 
+    // Project row (webmux sidebar Layer 1): disclosure caret + repo name + session
+    // count. Tapping toggles collapse of that project's sessions.
+    private func projectHeader(_ project: TmuxProject) -> some View {
+        let isExpanded = expanded.contains(project.cwd)
+        let isCollapsed = !isExpanded
+        return Button {
+            if isExpanded { expanded.remove(project.cwd) } else { expanded.insert(project.cwd) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(colors.onSurfaceVariant)
+                    .frame(width: 12)
+                Image(systemName: "folder.fill").font(.system(size: 13))
+                    .foregroundStyle(colors.primary.opacity(0.8))
+                Text(project.name).font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(colors.onSurface).lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(project.sessions.count)")
+                    .font(.caption2).fontWeight(.medium)
+                    .foregroundStyle(colors.onSurfaceVariant)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(colors.surfaceVariant.opacity(0.5))
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+        }.buttonStyle(.plain)
+    }
+
     private func sessionCard(_ session: TmuxSession) -> some View {
         Button { vm.attachSession(session.name) } label: {
             HStack {
                 Image(systemName: "terminal").foregroundStyle(colors.onPrimaryContainer)
                 Spacer().frame(width: 12)
-                VStack(alignment: .leading) {
-                    Text(session.name).font(.headline).foregroundStyle(colors.onPrimaryContainer)
-                    Text(session.windowName).font(.caption)
-                        .foregroundStyle(colors.onPrimaryContainer.opacity(0.7))
+                // Claude Code conversation name is the only thing the user sees; the
+                // tmux session name is an internal handle used to attach/kill.
+                HStack(spacing: 6) {
+                    // Busy dot when Claude is still working (source: Claude Code status).
+                    if session.status == "busy" {
+                        Circle().fill(colors.primary).frame(width: 6, height: 6)
+                    }
+                    Text(session.displayName).font(.headline)
+                        .foregroundStyle(colors.onPrimaryContainer).lineLimit(1)
                 }
                 Spacer()
                 Button { vm.killSession(session.name) } label: {
