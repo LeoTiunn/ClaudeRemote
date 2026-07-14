@@ -218,6 +218,25 @@ final class ChatViewModel: ObservableObject {
         holder.writeBytes(Array(seq.utf8))
     }
 
+    /// Send terminal input, but first snap tmux back to the live bottom. When the
+    /// user has scrolled up, tmux is in copy-mode and would EAT the keystrokes as
+    /// copy-mode commands (so the typed text vanishes and never reaches Claude).
+    /// `send-keys -X cancel` exits copy-mode over the command channel (no-op when
+    /// not in copy-mode, so it's safe either way and injects nothing literal).
+    func sendInput(_ text: String) {
+        let name = sessionName
+        Task { @MainActor in
+            if !name.isEmpty {
+                let esc = name.replacingOccurrences(of: "'", with: "'\\''")
+                let wasAttached = ssh.isAttachedToTmux
+                ssh.isAttachedToTmux = false
+                _ = try? await ssh.executeCommand("tmux send-keys -t '\(esc)' -X cancel 2>/dev/null || true")
+                ssh.isAttachedToTmux = wasAttached
+            }
+            holder.writeBytes(Array(text.utf8))
+        }
+    }
+
     func uploadAndAttachFile(_ url: URL) {
         // Upload over the command channel (independent of the tmux PTY — no detach needed).
         // The command channel is gated by isAttachedToTmux, so bypass it during the upload,

@@ -16,9 +16,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
@@ -53,6 +58,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.claude.remote.core.tmux.groupedByProject
 import com.claude.remote.core.ui.components.ConnectionState
 import com.claude.remote.core.ui.components.ConnectionStatusDot
 
@@ -66,6 +72,8 @@ fun SessionSwitcherScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
+    // Projects the user has expanded (by cwd). Default empty = all collapsed.
+    var expandedProjects by remember { mutableStateOf(emptySet<String>()) }
 
     // Refresh sessions every time this screen becomes visible (RESUMED)
     LaunchedEffect(lifecycleOwner) {
@@ -193,7 +201,9 @@ fun SessionSwitcherScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Active sessions section
+                    // Active sessions section — grouped by project (cwd), collapsed by
+                    // default (webmux sidebar parity). Display uses the Claude Code
+                    // conversation name; tmux name stays the internal attach/kill id.
                     if (!uiState.isSearching && uiState.sessions.isNotEmpty()) {
                         item {
                             Text(
@@ -203,46 +213,95 @@ fun SessionSwitcherScreen(
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
-                        items(uiState.sessions, key = { "session-${it.name}" }) { session ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.attachSession(session.name)
-                                    },
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            ) {
+                        uiState.sessions.groupedByProject().forEach { project ->
+                            item(key = "proj-${project.cwd}") {
+                                val isExpanded = expandedProjects.contains(project.cwd)
                                 Row(
-                                    modifier = Modifier.padding(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            expandedProjects = if (isExpanded)
+                                                expandedProjects - project.cwd
+                                            else expandedProjects + project.cwd
+                                        }
+                                        .padding(horizontal = 4.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Default.Terminal,
+                                        if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
                                         contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(modifier = Modifier.size(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = session.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    Spacer(modifier = Modifier.size(6.dp))
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(
+                                        text = project.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${project.sessions.size}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (expandedProjects.contains(project.cwd)) {
+                                items(project.sessions, key = { "session-${it.name}" }) { session ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 24.dp)
+                                            .clickable {
+                                                viewModel.attachSession(session.name)
+                                            },
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer
                                         )
-                                        Text(
-                                            text = session.windowName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.killSession(session.name) }) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Kill session",
-                                            tint = MaterialTheme.colorScheme.error
-                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (session.status == "busy") {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .clip(CircleShape)
+                                                        .background(MaterialTheme.colorScheme.primary)
+                                                )
+                                                Spacer(modifier = Modifier.size(8.dp))
+                                            } else {
+                                                Icon(
+                                                    Icons.Default.Terminal,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                                Spacer(modifier = Modifier.size(12.dp))
+                                            }
+                                            Text(
+                                                text = session.displayName,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(onClick = { viewModel.killSession(session.name) }) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = "Kill session",
+                                                    tint = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

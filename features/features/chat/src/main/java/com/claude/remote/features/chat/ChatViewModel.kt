@@ -287,6 +287,29 @@ class ChatViewModel @Inject constructor(
         terminalHolder.writeBytes(sequence.toByteArray(Charsets.UTF_8))
     }
 
+    /**
+     * Send terminal input, but first snap tmux back to the live bottom. When the
+     * user has scrolled up, tmux is in copy-mode and would EAT the keystrokes as
+     * copy-mode commands (so the typed text vanishes and never reaches Claude).
+     * `send-keys -X cancel` exits copy-mode over the command channel (no-op when
+     * not in copy-mode, so it's safe either way and injects nothing literal).
+     */
+    fun sendInput(text: String) {
+        val sessionName = _uiState.value.sessionName
+        viewModelScope.launch {
+            if (sessionName.isNotEmpty()) {
+                val escaped = sessionName.replace("'", "'\\''")
+                val wasAttached = sshClient.isAttachedToTmux
+                sshClient.isAttachedToTmux = false
+                try {
+                    sshClient.executeCommand("tmux send-keys -t '$escaped' -X cancel 2>/dev/null || true")
+                } catch (_: Exception) {}
+                sshClient.isAttachedToTmux = wasAttached
+            }
+            terminalHolder.writeBytes(text.toByteArray(Charsets.UTF_8))
+        }
+    }
+
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
         if (text.isEmpty()) return
@@ -302,27 +325,26 @@ class ChatViewModel @Inject constructor(
     }
 
     fun uploadAndAttachFile(uri: Uri) {
+        // Upload over the command channel (independent of the tmux PTY — no detach
+        // needed). The command channel is gated by isAttachedToTmux, so bypass it
+        // during upload, then paste the resulting remote path into the terminal.
         viewModelScope.launch {
+            _uiState.update { it.copy(isUploading = true, uploadFileName = "uploading...", statusMessage = "Uploading file...") }
+            val wasAttached = sshClient.isAttachedToTmux
+            sshClient.isAttachedToTmux = false
             try {
-                _uiState.update { it.copy(isUploading = true, uploadFileName = "uploading...") }
-
-                terminalHolder.writeBytes(byteArrayOf(0x02)) // Ctrl+B
-                kotlinx.coroutines.delay(150)
-                terminalHolder.writeBytes("d".toByteArray())
-                kotlinx.coroutines.delay(800)
-
                 val attachment = fileUploadManager.uploadFile(uri, sshClient)
-                _uiState.update { it.copy(isUploading = false, uploadFileName = null) }
-
-                val sessionName = _uiState.value.sessionName
-                if (sessionName.isNotEmpty()) {
-                    terminalHolder.writeToSession("tmux attach -t '$sessionName'\r")
-                    kotlinx.coroutines.delay(500)
-                    terminalHolder.writeBytes(attachment.remotePath!!.toByteArray(Charsets.UTF_8))
+                sshClient.isAttachedToTmux = wasAttached
+                _uiState.update { it.copy(isUploading = false, uploadFileName = null, statusMessage = null) }
+                // Type the path into the terminal (trailing space, no newline) so the
+                // user can keep typing their prompt around the attached file path.
+                attachment.remotePath?.let {
+                    terminalHolder.writeBytes(("$it ").toByteArray(Charsets.UTF_8))
                 }
             } catch (e: Exception) {
+                sshClient.isAttachedToTmux = wasAttached
                 _uiState.update {
-                    it.copy(isUploading = false, uploadFileName = null, error = "Upload failed: ${e.message}")
+                    it.copy(isUploading = false, uploadFileName = null, statusMessage = null, error = "Upload failed: ${e.message}")
                 }
             }
         }

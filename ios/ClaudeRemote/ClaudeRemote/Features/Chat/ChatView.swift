@@ -284,11 +284,13 @@ struct ChatView: View {
     }
 
     private func send() {
+        // sendInput first cancels tmux copy-mode (snaps to the live bottom) so the
+        // text isn't swallowed when the user has scrolled up.
         if !termInput.isEmpty {
-            vm.sendRawEscape(termInput + "\r")
+            vm.sendInput(termInput + "\r")
             termInput = ""
         } else {
-            vm.sendRawEscape("\r")
+            vm.sendInput("\r")
         }
         inputFocused = false // dismiss keyboard after sending
     }

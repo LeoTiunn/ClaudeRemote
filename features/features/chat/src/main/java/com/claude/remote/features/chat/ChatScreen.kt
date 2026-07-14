@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -73,6 +74,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.claude.remote.core.tmux.groupedByProject
 import com.claude.remote.core.ui.components.ConnectionState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +113,10 @@ fun ChatScreen(
     ) { uri: Uri? -> uri?.let { viewModel.uploadAndAttachFile(it) } }
     val listState = rememberLazyListState()
     val messages = uiState.messages
+    // Keyboard controller at screen scope so tapping the top bar can dismiss it.
+    val topKeyboardController = LocalSoftwareKeyboardController.current
+    // Projects expanded in the session dropdown (by cwd). Default = all collapsed.
+    var expandedProjects by remember { mutableStateOf(emptySet<String>()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -152,6 +158,7 @@ fun ChatScreen(
                             modifier = Modifier.combinedClickable(
                                 onClick = {
                                     if (uiState.isTerminalMode) {
+                                        topKeyboardController?.hide() // match iOS: dismiss keyboard on tap
                                         viewModel.loadAvailableSessions()
                                         showSessionSheet = true
                                     }
@@ -162,7 +169,10 @@ fun ChatScreen(
                             ConnectionStatusDot(state = uiState.connectionState)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                uiState.sessionName.ifEmpty { "Claude Remote" },
+                                if (uiState.sessionName.isEmpty()) "Claude Remote"
+                                else uiState.availableSessions
+                                    .firstOrNull { it.name == uiState.sessionName }?.displayName
+                                    ?: uiState.sessionName,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
@@ -189,58 +199,96 @@ fun ChatScreen(
                                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                                 }
                             } else {
-                                uiState.availableSessions.forEach { session ->
-                                    val isCurrent = session.name == uiState.sessionName
+                                // Grouped by project (cwd), collapsed by default. Display
+                                // uses the Claude Code conversation name; tmux name is the
+                                // internal switch/kill id.
+                                uiState.availableSessions.groupedByProject().forEach { project ->
+                                    val isExpanded = expandedProjects.contains(project.cwd)
                                     DropdownMenuItem(
                                         text = {
-                                            Row(
-                                                modifier = Modifier.combinedClickable(
-                                                    onClick = {
-                                                        showSessionSheet = false
-                                                        viewModel.switchSession(session.name)
-                                                    },
-                                                    onLongClick = {
-                                                        if (!isCurrent) {
-                                                            showSessionSheet = false
-                                                            killConfirmSession = session.name
-                                                        }
-                                                    }
-                                                ),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    session.name,
-                                                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
+                                            Text(
+                                                project.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
                                         },
                                         leadingIcon = {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        if (isCurrent) MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                                                    )
+                                            Icon(
+                                                if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         },
                                         trailingIcon = {
-                                            if (isCurrent) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = "Current",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                            Text(
+                                                "${project.sessions.size}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         },
                                         onClick = {
-                                            showSessionSheet = false
-                                            viewModel.switchSession(session.name)
+                                            expandedProjects = if (isExpanded)
+                                                expandedProjects - project.cwd
+                                            else expandedProjects + project.cwd
                                         }
                                     )
+                                    if (isExpanded) {
+                                        project.sessions.forEach { session ->
+                                            val isCurrent = session.name == uiState.sessionName
+                                            DropdownMenuItem(
+                                                modifier = Modifier.padding(start = 16.dp),
+                                                text = {
+                                                    Row(
+                                                        modifier = Modifier.combinedClickable(
+                                                            onClick = {
+                                                                showSessionSheet = false
+                                                                viewModel.switchSession(session.name)
+                                                            },
+                                                            onLongClick = {
+                                                                if (!isCurrent) {
+                                                                    showSessionSheet = false
+                                                                    killConfirmSession = session.name
+                                                                }
+                                                            }
+                                                        ),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            session.displayName,
+                                                            color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                                else MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                },
+                                                leadingIcon = {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(8.dp)
+                                                            .clip(CircleShape)
+                                                            .background(
+                                                                if (session.status == "busy" || isCurrent) MaterialTheme.colorScheme.primary
+                                                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                                            )
+                                                    )
+                                                },
+                                                trailingIcon = {
+                                                    if (isCurrent) {
+                                                        Icon(
+                                                            Icons.Default.Check,
+                                                            contentDescription = "Current",
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                },
+                                                onClick = {
+                                                    showSessionSheet = false
+                                                    viewModel.switchSession(session.name)
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                                 Divider()
                                 DropdownMenuItem(
@@ -432,11 +480,13 @@ fun ChatScreen(
                 val keyboardController = LocalSoftwareKeyboardController.current
                 val scope = rememberCoroutineScope()
                 val sendAction = {
+                    // sendInput first cancels tmux copy-mode (snaps to live bottom) so
+                    // text isn't swallowed when the user has scrolled up.
                     if (termInput.isNotEmpty()) {
-                        viewModel.sendRawEscape(termInput + "\r")
+                        viewModel.sendInput(termInput + "\r")
                         termInput = ""
                     } else {
-                        viewModel.sendRawEscape("\r")
+                        viewModel.sendInput("\r")
                     }
                     scope.launch {
                         kotlinx.coroutines.delay(100)

@@ -36,6 +36,7 @@ class FileUploadManager @Inject constructor(
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: throw IllegalStateException("Cannot open file: $uri")
 
+            var totalBytes = 0L
             inputStream.use { stream ->
                 // Clear/create the file first
                 sshClient.executeCommand("rm -f '$remotePath' && touch '$remotePath'")
@@ -45,8 +46,15 @@ class FileUploadManager @Inject constructor(
                 while (stream.read(buffer).also { bytesRead = it } != -1) {
                     val chunk = if (bytesRead == buffer.size) buffer else buffer.copyOf(bytesRead)
                     val encoded = Base64.getEncoder().encodeToString(chunk)
-                    sshClient.executeCommand("echo '$encoded' | base64 -d >> '$remotePath'")
+                    sshClient.executeCommand("printf '%s' '$encoded' | base64 -d >> '$remotePath'")
+                    totalBytes += bytesRead
                 }
+            }
+
+            // Verify the byte count on the server matches what we sent.
+            val reported = sshClient.executeCommand("wc -c < '$remotePath' | tr -d ' \\n'").trim()
+            if (reported.toLongOrNull() != totalBytes) {
+                throw IllegalStateException("Upload verify failed (expected $totalBytes bytes, got ${reported.ifEmpty { "?" }})")
             }
 
             Attachment(
