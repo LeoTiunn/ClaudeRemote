@@ -24,10 +24,17 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
         // each tmux session's live claude → sessions json (cc name + busy/idle),
         // one SSH round-trip. Falls back to the plain tmux listing (empty cc/status)
         // when python3 isn't on PATH → displayName = tmux name.
+        // NOTE: unlike iOS (which uses a real exec channel), Android's executeCommand
+        // runs inside the shared interactive shell and scrapes output between echo
+        // markers. `python3 -` (read script from stdin) would fight that shell's stdin
+        // and hang → 30s timeout → sessions never load. So write the helper to a temp
+        // file and run the FILE (stdin stays free for the marker protocol).
         val output = client.executeCommand(
             "export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; " +
-            "printf '%s' '$SESSION_HELPER_B64' | base64 --decode | python3 - 2>/dev/null " +
-            "|| tmux list-sessions -F '#{session_name}|#{pane_current_path}||' 2>/dev/null || true"
+            "H=\$(mktemp /tmp/cr_helper.XXXXXX.py); " +
+            "printf '%s' '$SESSION_HELPER_B64' | base64 --decode > \"\$H\"; " +
+            "python3 \"\$H\" 2>/dev/null; RC=\$?; rm -f \"\$H\"; " +
+            "if [ \$RC -ne 0 ]; then tmux list-sessions -F '#{session_name}|#{pane_current_path}||' 2>/dev/null; fi; true"
         )
         DebugLog.log("TMUX", "listSessions result(${output.length}): ${output.take(200)}")
         if (output.isBlank()) return emptyList()
