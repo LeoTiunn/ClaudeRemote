@@ -12,13 +12,25 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
 
     override suspend fun listSessions(client: SshClient): List<TmuxSession> {
         DebugLog.log("TMUX", "listSessions: calling executeCommand")
-        // Plain, proven listing (as in v9.8.5). The Claude-Code-name helper hung this
-        // command: Android's executeCommand runs inside the shared interactive shell
-        // and the 2.5KB helper payload jammed it → 30s timeout → endless loading.
-        // Reverted here so the app works; CC-name resolution on Android will be redone
-        // via a method verified against the server. Parsing stays tolerant of the extra
-        // cc_name|status columns so a future helper can slot in without a UI change.
-        val output = client.executeCommand("export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; tmux list-sessions -F '#{session_name}|#{pane_current_path}' 2>/dev/null || true")
+        // Resolve the Claude Code conversation name for each tmux session, but WITHOUT a
+        // long payload. Android's executeCommand runs inside the shared interactive PTY
+        // shell; a 2.5KB one-liner (the old base64 python helper) exceeded the PTY line
+        // buffer and jammed it → the END marker never printed → 30s timeout → endless
+        // "loading". This is a compact pure-shell one-liner (~560 chars, verified to
+        // complete under a real PTY): for each session, walk the pane_pid's descendants
+        // to find the claude process, then read ~/.claude/sessions/<pid>.json for name +
+        // status. Emits `name|cwd|cc_name|status`. Sessions with no live claude get empty
+        // cc_name/status → displayName falls back to the tmux name.
+        val cmd = "export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; " +
+            "kids(){ for c in \$(pgrep -P \"\$1\" 2>/dev/null); do echo \"\$c\"; kids \"\$c\"; done; }; " +
+            "tmux list-sessions -F '#{session_name}|#{pane_current_path}|#{pane_pid}' 2>/dev/null | " +
+            "while IFS='|' read n d pp; do cc=\"\"; st=\"\"; " +
+            "for k in \$pp \$(kids \"\$pp\"); do jf=\"\$HOME/.claude/sessions/\$k.json\"; " +
+            "if [ -f \"\$jf\" ]; then " +
+            "cc=\$(sed -n 's/.*\"name\":\"\\([^\"]*\\)\".*/\\1/p' \"\$jf\" | head -1); " +
+            "st=\$(sed -n 's/.*\"status\":\"\\([^\"]*\\)\".*/\\1/p' \"\$jf\" | head -1); break; fi; done; " +
+            "echo \"\$n|\$d|\$cc|\$st\"; done"
+        val output = client.executeCommand(cmd)
         DebugLog.log("TMUX", "listSessions result(${output.length}): ${output.take(200)}")
         if (output.isBlank()) return emptyList()
 
