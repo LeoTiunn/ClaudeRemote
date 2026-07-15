@@ -12,25 +12,18 @@ class TmuxSessionManagerImpl @Inject constructor() : TmuxSessionManager {
 
     override suspend fun listSessions(client: SshClient): List<TmuxSession> {
         DebugLog.log("TMUX", "listSessions: calling executeCommand")
-        // Resolve the Claude Code conversation name for each tmux session, but WITHOUT a
-        // long payload. Android's executeCommand runs inside the shared interactive PTY
-        // shell; a 2.5KB one-liner (the old base64 python helper) exceeded the PTY line
-        // buffer and jammed it → the END marker never printed → 30s timeout → endless
-        // "loading". This is a compact pure-shell one-liner (~560 chars, verified to
-        // complete under a real PTY): for each session, walk the pane_pid's descendants
-        // to find the claude process, then read ~/.claude/sessions/<pid>.json for name +
-        // status. Emits `name|cwd|cc_name|status`. Sessions with no live claude get empty
-        // cc_name/status → displayName falls back to the tmux name.
-        val cmd = "export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; " +
-            "kids(){ for c in \$(pgrep -P \"\$1\" 2>/dev/null); do echo \"\$c\"; kids \"\$c\"; done; }; " +
-            "tmux list-sessions -F '#{session_name}|#{pane_current_path}|#{pane_pid}' 2>/dev/null | " +
-            "while IFS='|' read n d pp; do cc=\"\"; st=\"\"; " +
-            "for k in \$pp \$(kids \"\$pp\"); do jf=\"\$HOME/.claude/sessions/\$k.json\"; " +
-            "if [ -f \"\$jf\" ]; then " +
-            "cc=\$(sed -n 's/.*\"name\":\"\\([^\"]*\\)\".*/\\1/p' \"\$jf\" | head -1); " +
-            "st=\$(sed -n 's/.*\"status\":\"\\([^\"]*\\)\".*/\\1/p' \"\$jf\" | head -1); break; fi; done; " +
-            "echo \"\$n|\$d|\$cc|\$st\"; done"
-        val output = client.executeCommand(cmd)
+        // Names come from a deployed server helper (~/bin/cr-sessions), the single source
+        // of truth shared by iOS + Android. The app only sends a SHORT command to run it —
+        // critical because Android's executeCommand runs inside the shared interactive PTY
+        // shell and a long command line (the old inline base64 python helper) overran the
+        // PTY line buffer → the END marker never printed → 30s timeout → endless loading.
+        // cr-sessions emits `name|cwd|cc_name|status`; missing helper falls back to the
+        // plain tmux listing so displayName degrades to the tmux name.
+        val output = client.executeCommand(
+            "export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; " +
+            "~/bin/cr-sessions 2>/dev/null || " +
+            "tmux list-sessions -F '#{session_name}|#{pane_current_path}||' 2>/dev/null || true"
+        )
         DebugLog.log("TMUX", "listSessions result(${output.length}): ${output.take(200)}")
         if (output.isBlank()) return emptyList()
 
