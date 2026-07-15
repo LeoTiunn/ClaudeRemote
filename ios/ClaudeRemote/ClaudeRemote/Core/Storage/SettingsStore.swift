@@ -28,11 +28,32 @@ final class SettingsStore: ObservableObject {
         fontSize = fs == 0 ? 16 : fs
     }
 
-    // Password (Keychain)
-    func getSshPassword() -> String { KeychainStore.getPassword() }
-    func setSshPassword(_ p: String) { KeychainStore.setPassword(p) }
-    func clearPassword() { KeychainStore.clearPassword() }
-    func hasPassword() -> Bool { KeychainStore.hasPassword() }
+    // Password — stored in UserDefaults (app sandbox) rather than the Keychain.
+    // Rationale: this is a personal sideload app on a free dev cert; every re-sign
+    // / cert-expiry reinstall changes the signing identity, which orphans Keychain
+    // items (SecItemCopyMatching → itemNotFound) so the password "disappears" and
+    // the app re-prompts. UserDefaults survives normal re-sign/overwrite installs.
+    // iOS sandboxing still keeps it unreadable by other apps. On first run after
+    // this change, migrate any existing Keychain password over so the user isn't
+    // prompted again.
+    private let passwordKey = "ssh_password"
+
+    func getSshPassword() -> String {
+        if let p = d.string(forKey: passwordKey), !p.isEmpty { return p }
+        // One-time migration from the old Keychain storage.
+        let legacy = KeychainStore.getPassword()
+        if !legacy.isEmpty { d.set(legacy, forKey: passwordKey) }
+        return legacy
+    }
+
+    func setSshPassword(_ p: String) { d.set(p, forKey: passwordKey) }
+
+    func clearPassword() {
+        d.removeObject(forKey: passwordKey)
+        KeychainStore.clearPassword()
+    }
+
+    func hasPassword() -> Bool { !getSshPassword().isEmpty }
 
     // Repo history — newline-separated, keep last 20 (matches Android).
     func getRepoHistory() -> [String] {

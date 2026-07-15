@@ -204,6 +204,47 @@ fun ChatScreen(
                                 // internal switch/kill id.
                                 uiState.availableSessions.groupedByProject().forEach { project ->
                                     val isExpanded = expandedProjects.contains(project.cwd)
+                                    // Single-session project → tap switches directly (no expand step).
+                                    val single = project.sessions.size == 1
+                                    if (single) {
+                                        val session = project.sessions.first()
+                                        val isCurrent = session.name == uiState.sessionName
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    session.displayName,
+                                                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            if (session.status == "busy" || isCurrent) MaterialTheme.colorScheme.primary
+                                                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                                                        )
+                                                )
+                                            },
+                                            trailingIcon = {
+                                                if (isCurrent) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = "Current",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                showSessionSheet = false
+                                                viewModel.switchSession(session.name)
+                                            }
+                                        )
+                                        return@forEach
+                                    }
                                     DropdownMenuItem(
                                         text = {
                                             Text(
