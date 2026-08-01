@@ -214,82 +214,52 @@ fun SessionSwitcherScreen(
                             )
                         }
                         uiState.sessions.groupedByProject().forEach { project ->
-                            // Most projects have a single session (session name == repo).
-                            // For those, tapping the project header attaches directly —
-                            // no pointless expand step. Only multi-session projects expand.
-                            val single = project.sessions.size == 1
+                            // Identical structure to iOS: EVERY project is a header row that
+                            // expands to reveal its indented session cards. No special-casing
+                            // single-session projects — mixing project rows and session rows
+                            // into one look made it impossible to tell them apart.
                             item(key = "proj-${project.cwd}") {
                                 val isExpanded = expandedProjects.contains(project.cwd)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            if (single) {
-                                                viewModel.attachSession(project.sessions.first().name)
-                                            } else {
-                                                expandedProjects = if (isExpanded)
-                                                    expandedProjects - project.cwd
-                                                else expandedProjects + project.cwd
-                                            }
+                                            expandedProjects = if (isExpanded)
+                                                expandedProjects - project.cwd
+                                            else expandedProjects + project.cwd
                                         }
                                         .padding(horizontal = 4.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        when {
-                                            single -> Icons.Default.Terminal
-                                            isExpanded -> Icons.Default.KeyboardArrowDown
-                                            else -> Icons.Default.KeyboardArrowRight
-                                        },
+                                        if (isExpanded) Icons.Default.KeyboardArrowDown
+                                        else Icons.Default.KeyboardArrowRight,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.size(6.dp))
-                                    if (!single) {
-                                        Icon(
-                                            Icons.Default.Folder,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.size(8.dp))
-                                    }
-                                    // Single-session project: show the session's Claude Code
-                                    // name (its busy dot too); multi: show the project name + count.
-                                    if (single) {
-                                        val s = project.sessions.first()
-                                        if (s.status == "busy") {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .clip(CircleShape)
-                                                    .background(MaterialTheme.colorScheme.primary)
-                                            )
-                                            Spacer(modifier = Modifier.size(8.dp))
-                                        }
-                                        Text(
-                                            text = s.displayName,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = project.name,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            text = "${project.sessions.size}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(
+                                        text = project.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "${project.sessions.size}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
-                            if (!single && expandedProjects.contains(project.cwd)) {
+                            if (expandedProjects.contains(project.cwd)) {
                                 items(project.sessions, key = { "session-${it.name}" }) { session ->
                                     Card(
                                         modifier = Modifier

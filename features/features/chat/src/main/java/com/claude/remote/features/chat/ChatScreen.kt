@@ -80,6 +80,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -115,6 +116,10 @@ fun ChatScreen(
     val messages = uiState.messages
     // Keyboard controller at screen scope so tapping the top bar can dismiss it.
     val topKeyboardController = LocalSoftwareKeyboardController.current
+    // Focus must be cleared too — hide() alone doesn't stick while the input row still
+    // holds focus (the IME is immediately re-shown), which is why the previous
+    // "dismiss keyboard on tap" did nothing.
+    val topFocusManager = LocalFocusManager.current
     // Projects expanded in the session dropdown (by cwd). Default = all collapsed.
     var expandedProjects by remember { mutableStateOf(emptySet<String>()) }
 
@@ -158,7 +163,10 @@ fun ChatScreen(
                             modifier = Modifier.combinedClickable(
                                 onClick = {
                                     if (uiState.isTerminalMode) {
-                                        topKeyboardController?.hide() // match iOS: dismiss keyboard on tap
+                                        // Clear focus FIRST, then hide — otherwise the
+                                        // focused input row instantly re-opens the IME.
+                                        topFocusManager.clearFocus(force = true)
+                                        topKeyboardController?.hide()
                                         viewModel.loadAvailableSessions()
                                         showSessionSheet = true
                                     }
@@ -204,47 +212,10 @@ fun ChatScreen(
                                 // internal switch/kill id.
                                 uiState.availableSessions.groupedByProject().forEach { project ->
                                     val isExpanded = expandedProjects.contains(project.cwd)
-                                    // Single-session project → tap switches directly (no expand step).
-                                    val single = project.sessions.size == 1
-                                    if (single) {
-                                        val session = project.sessions.first()
-                                        val isCurrent = session.name == uiState.sessionName
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    session.displayName,
-                                                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(8.dp)
-                                                        .clip(CircleShape)
-                                                        .background(
-                                                            if (session.status == "busy" || isCurrent) MaterialTheme.colorScheme.primary
-                                                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                                                        )
-                                                )
-                                            },
-                                            trailingIcon = {
-                                                if (isCurrent) {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = "Current",
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                showSessionSheet = false
-                                                viewModel.switchSession(session.name)
-                                            }
-                                        )
-                                        return@forEach
-                                    }
+                                    // Same structure for every project (matches iOS): a header
+                                    // row that expands to its sessions. No single-session
+                                    // shortcut — it made project rows and session rows
+                                    // indistinguishable.
                                     DropdownMenuItem(
                                         text = {
                                             Text(
