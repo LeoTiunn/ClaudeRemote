@@ -18,7 +18,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -41,7 +44,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -92,20 +94,33 @@ fun SessionSwitcherScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConnectionStatusDot(state = uiState.connectionState)
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("Claude Remote")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
+            // Plain row on the page background — NOT Material3 TopAppBar, which brings
+            // its own tinted surface colour, taller height and larger title, none of
+            // which iOS has. iOS uses a bare HStack with a title3/semibold label.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ConnectionStatusDot(state = uiState.connectionState)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    "Claude Remote",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -178,7 +193,9 @@ fun SessionSwitcherScreen(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    label = { Text("Search repos to create session...") },
+                    // placeholder, not label — a Material floating label animates up on
+                    // focus and shrinks; iOS shows a static placeholder that just clears.
+                    placeholder = { Text("Search repos to create session...") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(
@@ -198,17 +215,21 @@ fun SessionSwitcherScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .weight(1f),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    // iOS packs rows with 2–4pt insets; 8dp reads noticeably looser.
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Active sessions section — grouped by project (cwd), collapsed by
                     // default (webmux sidebar parity). Display uses the Claude Code
                     // conversation name; tmux name stays the internal attach/kill id.
                     if (!uiState.isSearching && uiState.sessions.isNotEmpty()) {
                         item {
+                            // titleSmall, not titleMedium — iOS renders this as a plain
+                            // List section header, which is a size smaller than the
+                            // project rows beneath it.
                             Text(
                                 "Active Sessions",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
@@ -231,19 +252,21 @@ fun SessionSwitcherScreen(
                                         .padding(horizontal = 4.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // 18dp Material glyphs sat much heavier than iOS's
+                                    // 11pt chevron / 13pt folder. Scaled to match.
                                     Icon(
                                         if (isExpanded) Icons.Default.KeyboardArrowDown
                                         else Icons.Default.KeyboardArrowRight,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.size(6.dp))
                                     Icon(
                                         Icons.Default.Folder,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.size(8.dp))
                                     Text(
@@ -252,10 +275,19 @@ fun SessionSwitcherScreen(
                                         color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.weight(1f)
                                     )
+                                    // Pill, matching the iOS capsule — a bare number read
+                                    // as body text rather than a badge.
                                     Text(
                                         text = "${project.sessions.size}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(
+                                                MaterialTheme.colorScheme.surfaceVariant
+                                                    .copy(alpha = 0.5f)
+                                            )
+                                            .padding(horizontal = 7.dp, vertical = 2.dp)
                                     )
                                 }
                             }
@@ -268,7 +300,10 @@ fun SessionSwitcherScreen(
                                             .clickable {
                                                 viewModel.attachSession(session.name)
                                             },
-                                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        // Flat like iOS — a 2dp shadow made every card
+                                        // float off the page.
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                                         colors = CardDefaults.cardColors(
                                             containerColor = MaterialTheme.colorScheme.primaryContainer
                                         )
@@ -277,21 +312,23 @@ fun SessionSwitcherScreen(
                                             modifier = Modifier.padding(16.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            // iOS shows the terminal icon ALWAYS and adds the
+                                            // busy dot next to the name. Swapping one for the
+                                            // other meant a busy session lost its icon.
+                                            Icon(
+                                                Icons.Default.Terminal,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Spacer(modifier = Modifier.size(12.dp))
                                             if (session.status == "busy") {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(8.dp)
+                                                        .size(6.dp)
                                                         .clip(CircleShape)
                                                         .background(MaterialTheme.colorScheme.primary)
                                                 )
-                                                Spacer(modifier = Modifier.size(8.dp))
-                                            } else {
-                                                Icon(
-                                                    Icons.Default.Terminal,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                                )
-                                                Spacer(modifier = Modifier.size(12.dp))
+                                                Spacer(modifier = Modifier.size(6.dp))
                                             }
                                             Text(
                                                 text = session.displayName,
@@ -422,7 +459,11 @@ private fun RepoCard(repo: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
