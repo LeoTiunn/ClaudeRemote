@@ -12,6 +12,14 @@ struct ChatView: View {
     let sessionName: String
     let onNavigateToSessions: () -> Void
     let onNavigateToSettings: () -> Void
+    // iPad sidebar hooks. All nil on iPhone, so the phone layout is untouched.
+    /// Session picked in the sidebar; switches this terminal in place.
+    var requestedSession: String? = nil
+    /// Shows the collapse/expand button for the sidebar when set.
+    var onToggleSidebar: (() -> Void)? = nil
+    /// Reports switches made from this view's own dropdown, so the sidebar
+    /// highlight follows.
+    var onSessionChanged: ((String) -> Void)? = nil
 
     @State private var showSessionMenu = false
     @State private var expandedProjects: Set<String> = []
@@ -56,6 +64,12 @@ struct ChatView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active && didStart { vm.checkConnectionAndReconnect() }
         }
+        .onChange(of: requestedSession) { _, name in
+            if let name, didStart { vm.switchSession(name) }
+        }
+        .onChange(of: vm.sessionName) { _, name in
+            if !name.isEmpty { onSessionChanged?(name) }
+        }
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let url = urls.first {
@@ -86,6 +100,15 @@ struct ChatView: View {
 
     private var topBar: some View {
         HStack(spacing: 0) {
+            if let onToggleSidebar {
+                Button(action: onToggleSidebar) {
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 17))
+                        .foregroundStyle(colors.onSurfaceVariant)
+                        .frame(width: 36, height: 36)
+                }
+                .padding(.trailing, 4)
+            }
             Button {
                 vm.loadAvailableSessions()
                 showSessionMenu = true

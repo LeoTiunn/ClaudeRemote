@@ -9,6 +9,9 @@ struct SessionSwitcherView: View {
 
     let onSessionSelected: (String) -> Void
     let onNavigateToSettings: () -> Void
+    /// iPad sidebar only: the session open in the terminal pane. Highlighted, and
+    /// its project kept expanded so you can always see where you are.
+    var selectedSession: String? = nil
 
     @State private var searchQuery = ""
     @State private var passwordInput = ""
@@ -29,6 +32,8 @@ struct SessionSwitcherView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { vm.onScreenVisible() }
         }
+        .onChange(of: selectedSession) { _, _ in expandSelectedProject() }
+        .onChange(of: vm.sessions) { _, _ in expandSelectedProject() }
         .onChange(of: vm.navigateToSession) { _, name in
             if let name { vm.onNavigated(); onSessionSelected(name) }
         }
@@ -37,6 +42,12 @@ struct SessionSwitcherView: View {
             Button("Connect") { vm.connectWithPassword(passwordInput); passwordInput = "" }
             Button("Cancel", role: .cancel) { vm.dismissPasswordPrompt() }
         } message: { Text("Enter password to connect") }
+    }
+
+    private func expandSelectedProject() {
+        guard let selectedSession,
+              let s = vm.sessions.first(where: { $0.name == selectedSession }) else { return }
+        expanded.insert(s.cwd)
     }
 
     // Matches Android TopAppBar: [status dot] Claude Remote ... [gear]. No system
@@ -196,6 +207,8 @@ struct SessionSwitcherView: View {
             .padding(16)
             .background(colors.primaryContainer)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .stroke(colors.primary, lineWidth: session.name == selectedSession ? 2 : 0))
         }.buttonStyle(.plain)
     }
 
