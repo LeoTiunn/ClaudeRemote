@@ -2,6 +2,7 @@ package com.claude.remote.core.ssh
 
 import com.claude.remote.core.ui.components.ConnectionState
 import com.jcraft.jsch.ChannelShell
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import kotlinx.coroutines.CompletableDeferred
@@ -18,6 +19,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.InputStream
@@ -293,53 +295,49 @@ class SshClientImpl @Inject constructor() : SshClient {
         }
     }
 
+    /**
+     * Runs [command] on its own SSH exec channel and returns stdout+stderr.
+     *
+     * Each call gets a fresh channel on the shared session, so commands run in
+     * parallel. This used to write into ONE shared interactive shell behind
+     * execMutex and scrape output between echoed markers, which meant (a) a session
+     * switch queued behind a ~1.2s session listing, making switches feel laggy, and
+     * (b) any command longer than the PTY line buffer never returned. Both went
+     * away by matching what the iOS client does (Citadel exec per command).
+     *
+     * No isAttachedToTmux check any more: an exec channel cannot type into the
+     * attached terminal, so there is nothing to protect.
+     */
     override suspend fun executeCommand(command: String): String {
         DebugLog.log("EXEC", "Command: ${command.take(80)}")
+        val session = jschSession?.takeIf { it.isConnected }
+            ?: throw IllegalStateException("Not connected")
 
-        if (isAttachedToTmux) {
-            DebugLog.log("EXEC", "Skipping — attached to tmux")
+        val started = System.currentTimeMillis()
+        val result = withContext(Dispatchers.IO) {
+            withTimeoutOrNull(30_000L) {
+                val channel = session.openChannel("exec") as ChannelExec
+                try {
+                    channel.setCommand(ExecCommand.wrap(command))
+                    channel.setPty(false)
+                    val out = channel.inputStream
+                    runInterruptible {
+                        channel.connect(10_000)
+                        out.readBytes().toString(Charsets.UTF_8)
+                    }
+                } finally {
+                    channel.disconnect()
+                }
+            }
+        }
+        val ms = System.currentTimeMillis() - started
+        if (result == null) {
+            DebugLog.log("EXEC", "TIMEOUT after 30s")
             return ""
         }
-
-        if (shellOutputStream == null) {
-            throw IllegalStateException("Not connected (no shell)")
-        }
-
-        return execMutex.withLock {
-            val marker = "CMD_${System.nanoTime()}"
-            val startMarker = "START_$marker"
-            val endMarker = "END_$marker"
-            val deferred = CompletableDeferred<String>()
-            val pending = PendingCommand(marker, deferred)
-            pendingCommand = pending
-
-            DebugLog.log("EXEC", "Sending via shell with marker $marker")
-
-            withContext(Dispatchers.IO) {
-                shellOutputStream?.let { stream ->
-                    val wrappedCommand = "echo '$startMarker'; $command; echo '$endMarker'\n"
-                    stream.write(wrappedCommand.toByteArray(Charsets.UTF_8))
-                    stream.flush()
-                } ?: throw IllegalStateException("Shell disconnected")
-            }
-
-            // Wait for result with timeout
-            val result = withTimeoutOrNull(30_000L) {
-                deferred.await()
-            }
-
-            pendingCommand = null
-
-            if (result == null) {
-                DebugLog.log("EXEC", "TIMEOUT after 30s")
-                ""
-            } else {
-                // Strip ANSI escape sequences from result
-                val cleaned = stripAnsi(result)
-                DebugLog.log("EXEC", "Result(${cleaned.length}): ${cleaned.take(200)}")
-                cleaned
-            }
-        }
+        val cleaned = stripAnsi(result)
+        DebugLog.log("EXEC", "Result(${cleaned.length}) in ${ms}ms: ${cleaned.take(200)}")
+        return cleaned
     }
 
     private fun stripAnsi(text: String): String {
