@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -100,6 +101,13 @@ import com.claude.remote.core.ui.components.ConnectionStatusDot
 fun ChatScreen(
     onNavigateToSessions: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
+    // Tablet sidebar hooks. All null on phones, so the phone layout is untouched.
+    /** Session picked in the sidebar; switches this terminal in place. */
+    requestedSession: String? = null,
+    /** Shows the collapse/expand button for the sidebar when set. */
+    onToggleSidebar: (() -> Unit)? = null,
+    /** Reports switches made from this screen's own dropdown, so the sidebar follows. */
+    onSessionChanged: ((String) -> Unit)? = null,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -152,10 +160,28 @@ fun ChatScreen(
         }
     }
 
+    LaunchedEffect(requestedSession) {
+        requestedSession?.let { viewModel.switchSession(it) }
+    }
+    LaunchedEffect(uiState.sessionName) {
+        if (uiState.sessionName.isNotEmpty()) onSessionChanged?.invoke(uiState.sessionName)
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (onToggleSidebar != null) {
+                        IconButton(onClick = onToggleSidebar) {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = "Toggle sidebar",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
                 title = {
                     Box {
                         Row(

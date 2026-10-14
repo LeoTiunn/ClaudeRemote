@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,12 +72,20 @@ fun SessionSwitcherScreen(
     onSessionSelected: (String) -> Unit,
     onNavigateToSettings: () -> Unit = {},
     onNavigateToDebugLog: () -> Unit = {},
+    /** Tablet sidebar only: the session open in the terminal pane — outlined, and
+     *  its project kept expanded so you can always see where you are. */
+    selectedSession: String? = null,
     viewModel: SessionSwitcherViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     // Projects the user has expanded (by cwd). Default empty = all collapsed.
     var expandedProjects by remember { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(selectedSession, uiState.sessions) {
+        uiState.sessions.firstOrNull { it.name == selectedSession }?.let {
+            expandedProjects = expandedProjects + it.cwd
+        }
+    }
 
     // Refresh sessions every time this screen becomes visible (RESUMED)
     LaunchedEffect(lifecycleOwner) {
@@ -305,6 +314,9 @@ fun SessionSwitcherScreen(
                                                 viewModel.attachSession(session.name)
                                             },
                                         shape = RoundedCornerShape(12.dp),
+                                        border = if (session.name == selectedSession)
+                                            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                                        else null,
                                         // Flat like iOS — a 2dp shadow made every card
                                         // float off the page.
                                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
