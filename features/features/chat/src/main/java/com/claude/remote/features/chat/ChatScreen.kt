@@ -64,6 +64,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.LocalMinimumInteractiveComponentEnforcement
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -832,6 +834,7 @@ fun StreamingIndicator(
 }
 
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalKeysBar(
     onKey: (String) -> Unit,
@@ -851,6 +854,11 @@ fun TerminalKeysBar(
         "→" to "\u001b[C",
     )
 
+    // Surface(onClick) pads every key out to Material's 48dp minimum touch height,
+    // but only draws ~26dp — the rest showed as a blank band, about one line tall,
+    // between the terminal and the keys (worst on tablets). iOS draws the keys at
+    // their natural height; match it.
+    CompositionLocalProvider(LocalMinimumInteractiveComponentEnforcement provides false) {
     Row(
         modifier = modifier
             .padding(horizontal = 4.dp, vertical = 3.dp),
@@ -879,5 +887,6 @@ fun TerminalKeysBar(
                 )
             }
         }
+    }
     }
 }
