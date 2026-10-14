@@ -99,7 +99,7 @@ private fun TabletHome(
     Row(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible = sidebarVisible) {
             Row {
-                Box(Modifier.width(340.dp).fillMaxHeight()) {
+                Box(Modifier.width(280.dp).fillMaxHeight()) {
                     SessionSwitcherScreen(
                         onSessionSelected = { tapped ->
                             when (val a = SidebarAction.forTap(tapped, openSession)) {

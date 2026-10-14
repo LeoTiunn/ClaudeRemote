@@ -98,7 +98,7 @@ struct RootView: View {
                     onNavigateToSettings: { showSettings = true },
                     selectedSession: openSession
                 )
-                .frame(width: 340)
+                .frame(width: 280)
                 .transition(.move(edge: .leading))
                 Divider().overlay(colors.surfaceVariant.opacity(0.5))
             }
