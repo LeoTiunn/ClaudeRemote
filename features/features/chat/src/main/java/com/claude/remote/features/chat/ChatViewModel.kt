@@ -1,5 +1,6 @@
 package com.claude.remote.features.chat
 
+import com.claude.remote.core.tmux.OwnClient
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -97,7 +98,8 @@ class ChatViewModel @Inject constructor(
                 kotlinx.coroutines.delay(300)
                 if (terminalHolder.isSessionRunning() && sessionName.isNotEmpty()) {
                     DebugLog.log("CHAT", "Attaching to tmux session: $sessionName")
-                    terminalHolder.writeToSession("tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
+                    ownTty = null // new PTY, new tty — re-read on the next switch
+                    terminalHolder.writeToSession("${OwnClient.recordTty(CLIENT_ID)}; tmux attach -t '$sessionName' || tmux new-session -s '$sessionName'\r")
                     terminalHolder.attachedSessionName = sessionName
                     sshClient.currentSessionName = sessionName
                     sshClient.isAttachedToTmux = true
@@ -168,6 +170,9 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    /** This app's tmux client tty, read once after attach (see OwnClient). */
+    private var ownTty: String? = null
+
     fun switchSession(sessionName: String) {
         if (sessionName == _uiState.value.sessionName) return
         // Clear old content + update UI immediately so user sees the switch
@@ -183,8 +188,23 @@ class ChatViewModel @Inject constructor(
                 val wasAttached = sshClient.isAttachedToTmux
                 sshClient.isAttachedToTmux = false
                 try {
-                    sshClient.executeCommand("tmux switch-client -t '${sessionName.replace("'", "'\\''")}'")
+                    // Switch OUR client only (-c). If we cannot tell which client is
+                    // ours, re-attach instead — a bare switch-client moves whichever
+                    // client was active last: another device or the Mac's terminal.
+                    val tty = ownTty ?: OwnClient.parseTty(
+                        sshClient.executeCommand(OwnClient.readTty(CLIENT_ID))
+                    )?.also { ownTty = it }
+                    if (tty == null) {
+                        sshClient.isAttachedToTmux = wasAttached
+                        connectAndAttach(sessionName)
+                        return@launch
+                    }
+                    val out = sshClient.executeCommand(OwnClient.switchTo(tty, sessionName))
                     sshClient.isAttachedToTmux = wasAttached
+                    if (out.contains("can't find client")) {
+                        ownTty = null
+                        connectAndAttach(sessionName)
+                    }
                 } catch (_: Exception) {
                     // Command failed — SSH likely dead, full reconnect
                     sshClient.isAttachedToTmux = wasAttached
@@ -401,5 +421,10 @@ class ChatViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         voiceInputManager?.destroy()
+    }
+
+    companion object {
+        /** Per-process id naming this app's tmux user option (@cr-client-<id>). */
+        private val CLIENT_ID = java.util.UUID.randomUUID().toString().take(8)
     }
 }
