@@ -572,9 +572,31 @@ public final class TerminalView extends View {
     }
 
     /** Perform a scroll, either from dragging the screen or by scrolling a mouse wheel. */
+    /**
+     * When true, scrolling always sends SGR mouse-wheel events instead of following
+     * the emulator's mouse-tracking flags. Set by ClaudeRemote, whose only peer is tmux
+     * with `mouse on`. Without it, any emulator reset (the app clears the screen on a
+     * session switch) wiped tmux's mouse-tracking mode, tmux never re-sent it, and
+     * scrolling fell through to arrow keys, which Claude Code reads as history recall.
+     */
+    public boolean mAlwaysSendMouseWheel = false;
+
+    /** SGR (1006) wheel press: button 64 = up, 65 = down; 1-based col;row. */
+    public static String sgrWheel(boolean up, int column, int row) {
+        return "\u001b[<" + (up ? 64 : 65) + ";" + Math.max(1, column) + ";" + Math.max(1, row) + "M";
+    }
+
     void doScroll(MotionEvent event, int rowsDown) {
         boolean up = rowsDown < 0;
         int amount = Math.abs(rowsDown);
+        if (mAlwaysSendMouseWheel && mTermSession != null) {
+            int col = event == null ? 1 : (int) (event.getX() / mRenderer.mFontWidth) + 1;
+            int row = event == null ? 1
+                : (int) ((event.getY() - mRenderer.mFontLineSpacingAndAscent) / mRenderer.mFontLineSpacing) + 1;
+            String seq = sgrWheel(up, col, row);
+            for (int i = 0; i < amount; i++) mTermSession.write(seq);
+            return;
+        }
         for (int i = 0; i < amount; i++) {
             if (mEmulator.isMouseTrackingActive()) {
                 sendMouseEventCode(event, up ? TerminalEmulator.MOUSE_WHEELUP_BUTTON : TerminalEmulator.MOUSE_WHEELDOWN_BUTTON, true);

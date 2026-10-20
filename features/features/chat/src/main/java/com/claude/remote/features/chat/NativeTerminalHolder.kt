@@ -147,6 +147,9 @@ class NativeTerminalHolder @Inject constructor(
 
         return com.termux.view.TerminalView(context, null).also { tv ->
             tv.setTerminalViewClient(viewClient)
+            // Peer is always tmux with `mouse on`: scroll must be wheel events, never
+            // arrow keys (see TerminalView.mAlwaysSendMouseWheel).
+            tv.mAlwaysSendMouseWheel = true
             tv.setTextSize(spToPx(fontSize))
             tv.setTypeface(getTerminalTypeface(context))
             tv.setBackgroundColor(0xFF1C1917.toInt())

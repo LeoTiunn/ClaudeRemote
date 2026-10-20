@@ -17,6 +17,7 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     implementation(project(":terminal-emulator"))
     implementation(libs.androidx.core.ktx)
 }
